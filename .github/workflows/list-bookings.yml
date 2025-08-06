@@ -1,0 +1,158 @@
+name: 📋 List All Bookings
+
+on:
+  workflow_dispatch:
+    inputs:
+      show_all:
+        description: 'Show all bookings (including past/completed)'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  list-bookings:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+        
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+        
+    - name: Display all bookings
+      run: |
+        # Create booking display script
+        cat > list-bookings-workflow.mjs << 'EOF'
+        import fs from 'fs/promises';
+        
+        function formatDate(dateStr) {
+          const date = new Date(dateStr + 'T00:00:00Z');
+          return date.toLocaleDateString('en-US', { 
+            weekday: 'short', 
+            year: 'numeric', 
+            month: 'short', 
+            day: 'numeric' 
+          });
+        }
+        
+        function daysUntil(dateStr) {
+          const target = new Date(dateStr + 'T00:00:00Z');
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const diff = Math.ceil((target - today) / (1000 * 60 * 60 * 24));
+          return diff;
+        }
+        
+        async function listBookings() {
+          const showAll = process.env.SHOW_ALL === 'true';
+          
+          try {
+            const configFile = await fs.readFile('booking-config.json', 'utf8');
+            const config = JSON.parse(configFile);
+            
+            let bookings = config.bookings || [];
+            
+            if (!showAll) {
+              // Filter to show only upcoming bookings
+              const today = new Date().toISOString().split('T')[0];
+              bookings = bookings.filter(b => b.targetDate >= today);
+            }
+            
+            console.log('=' .repeat(60));
+            console.log(`📋 ${showAll ? 'ALL' : 'UPCOMING'} BOOKINGS`);
+            console.log('=' .repeat(60));
+            
+            if (bookings.length === 0) {
+              console.log('📭 No bookings found');
+              return;
+            }
+            
+            console.log(`Found ${bookings.length} booking(s):\n`);
+            
+            // Group by status
+            const activeBookings = bookings.filter(b => b.enabled && !b.completedAt);
+            const completedBookings = bookings.filter(b => b.completedAt);
+            const disabledBookings = bookings.filter(b => !b.enabled && !b.completedAt);
+            const failedBookings = bookings.filter(b => b.lastFailure && b.enabled);
+            
+            // Show active bookings
+            if (activeBookings.length > 0) {
+              console.log('🟢 ACTIVE BOOKINGS:');
+              activeBookings.forEach((booking, index) => {
+                const days = daysUntil(booking.targetDate);
+                const timeUntil = days > 0 ? `${days} days` : days === 0 ? 'today' : `${Math.abs(days)} days ago`;
+                
+                console.log(`\n${index + 1}. ${booking.description}`);
+                console.log(`   🎯 Target: ${formatDate(booking.targetDate)} (${timeUntil})`);
+                console.log(`   ⏰ Time: ${booking.start} - ${booking.end} (Resource ${booking.resource})`);
+                console.log(`   📅 Executes: ${formatDate(booking.bookingDate)} at 18:01 Netherlands time`);
+                
+                if (booking.addedBy) {
+                  console.log(`   👤 Added: ${booking.addedBy} on ${new Date(booking.addedAt).toLocaleDateString()}`);
+                }
+              });
+              console.log('');
+            }
+            
+            // Show completed bookings
+            if (completedBookings.length > 0) {
+              console.log('✅ COMPLETED BOOKINGS:');
+              completedBookings.forEach((booking, index) => {
+                console.log(`\n${index + 1}. ${booking.description}`);
+                console.log(`   🎯 Target: ${formatDate(booking.targetDate)}`);
+                console.log(`   ⏰ Time: ${booking.start} - ${booking.end} (Resource ${booking.resource})`);
+                console.log(`   ✅ Completed: ${new Date(booking.completedAt).toLocaleString()}`);
+              });
+              console.log('');
+            }
+            
+            // Show failed bookings
+            if (failedBookings.length > 0) {
+              console.log('❌ FAILED BOOKINGS (will retry):');
+              failedBookings.forEach((booking, index) => {
+                console.log(`\n${index + 1}. ${booking.description}`);
+                console.log(`   🎯 Target: ${formatDate(booking.targetDate)}`);
+                console.log(`   ⏰ Time: ${booking.start} - ${booking.end} (Resource ${booking.resource})`);
+                console.log(`   ❌ Last failure: ${booking.lastFailure.error}`);
+                console.log(`   🕐 Failed at: ${new Date(booking.lastFailure.at).toLocaleString()}`);
+              });
+              console.log('');
+            }
+            
+            // Show disabled bookings
+            if (disabledBookings.length > 0) {
+              console.log('🔴 DISABLED BOOKINGS:');
+              disabledBookings.forEach((booking, index) => {
+                console.log(`\n${index + 1}. ${booking.description}`);
+                console.log(`   🎯 Target: ${formatDate(booking.targetDate)}`);
+                console.log(`   ⏰ Time: ${booking.start} - ${booking.end} (Resource ${booking.resource})`);
+                console.log(`   🔴 Status: Disabled`);
+              });
+              console.log('');
+            }
+            
+            // Summary
+            console.log('📊 SUMMARY:');
+            console.log(`   🟢 Active: ${activeBookings.length}`);
+            console.log(`   ✅ Completed: ${completedBookings.length}`);
+            console.log(`   ❌ Failed: ${failedBookings.length}`);
+            console.log(`   🔴 Disabled: ${disabledBookings.length}`);
+            console.log(`   📊 Total: ${bookings.length}`);
+            
+          } catch (error) {
+            console.error(`❌ Error reading bookings: ${error.message}`);
+            console.log('📝 To add your first booking, run the "Add New Booking" workflow');
+          }
+        }
+        
+        listBookings().catch(error => {
+          console.error(`❌ Fatal error: ${error.message}`);
+          process.exit(1);
+        });
+        EOF
+        
+        # Run the script
+        SHOW_ALL="${{ github.event.inputs.show_all }}" node list-bookings-workflow.mjs

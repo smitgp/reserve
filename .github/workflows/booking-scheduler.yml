@@ -1,0 +1,80 @@
+name: Library Booking Scheduler
+
+on:
+  schedule:
+    # Check every day at 18:01 Netherlands time (17:01 UTC)
+    - cron: '1 17 * * *'
+  
+  workflow_dispatch:
+    inputs:
+      force_date:
+        description: 'Force booking for specific date (YYYY-MM-DD)'
+        required: false
+        type: string
+      dry_run:
+        description: 'Dry run - check what would be booked'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  check-and-book:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Create .env file
+      env:
+        EMAIL: ${{ secrets.EMAIL }}
+        LOCATION: ${{ secrets.LOCATION }}
+        TYPE: ${{ secrets.TYPE }}
+        BASE_EMAIL: ${{ secrets.BASE_EMAIL }}
+        ENGINE_BODY: ${{ secrets.ENGINE_BODY }}
+      run: |
+        cat > .env << EOF
+        EMAIL=${{ secrets.EMAIL }}
+        LOCATION=${{ secrets.LOCATION }}
+        TYPE=${{ secrets.TYPE }}
+        BASE_EMAIL=${{ secrets.BASE_EMAIL }}
+        ENGINE_BODY=${{ secrets.ENGINE_BODY }}
+        EOF
+        
+    - name: Check and book scheduled reservations
+      env:
+        FORCE_DATE: ${{ github.event.inputs.force_date }}
+        DRY_RUN: ${{ github.event.inputs.dry_run }}
+      run: |
+        echo "🔍 Checking for bookings scheduled for today..."
+        node booking-scheduler.mjs
+        
+    - name: Commit booking status updates
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action - Scheduler"
+        git add booking-config.json
+        
+        if git diff --staged --quiet; then
+          echo "📭 No booking status changes to commit"
+        else
+          git commit -m "🤖 Update booking status after scheduler run
+
+          🕐 Executed: $(date -u '+%Y-%m-%d %H:%M:%S UTC')
+          📅 For date: ${FORCE_DATE:-$(date -u '+%Y-%m-%d')}
+          🔧 Mode: ${DRY_RUN:-live}"
+          
+          git push
+          echo "✅ Booking status updates committed to repository"
+        fi

@@ -1,0 +1,187 @@
+name: 📝 Add New Booking
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_date:
+        description: 'Target booking date (YYYY-MM-DD)'
+        required: true
+        type: string
+        default: '2025-12-15'
+      start_time:
+        description: 'Start time (HH:MM)'
+        required: true
+        type: string
+        default: '09:00'
+      end_time:
+        description: 'End time (HH:MM)'
+        required: true
+        type: string
+        default: '17:00'
+      resource:
+        description: 'Resource ID'
+        required: false
+        type: string
+        default: '565'
+      description:
+        description: 'Booking description'
+        required: false
+        type: string
+        default: 'Library work session'
+      replace_existing:
+        description: 'Replace existing booking for this date if it exists'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  add-booking:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+        
+    - name: Validate inputs
+      run: |
+        echo "🎯 Adding booking for: ${{ github.event.inputs.target_date }}"
+        echo "⏰ Time: ${{ github.event.inputs.start_time }} - ${{ github.event.inputs.end_time }}"
+        echo "🏢 Resource: ${{ github.event.inputs.resource }}"
+        echo "📝 Description: ${{ github.event.inputs.description }}"
+        echo "🔄 Replace existing: ${{ github.event.inputs.replace_existing }}"
+        
+        # Validate date format
+        if ! date -d "${{ github.event.inputs.target_date }}" >/dev/null 2>&1; then
+          echo "❌ Invalid date format. Use YYYY-MM-DD"
+          exit 1
+        fi
+        
+        # Calculate booking date (2 days before)
+        TARGET_DATE="${{ github.event.inputs.target_date }}"
+        BOOKING_DATE=$(date -d "$TARGET_DATE - 2 days" +%Y-%m-%d)
+        echo "📅 Will book on: $BOOKING_DATE at 18:01 Netherlands time"
+        echo "BOOKING_DATE=$BOOKING_DATE" >> $GITHUB_ENV
+        
+    - name: Add booking to configuration
+      run: |
+        # Create booking configuration script
+        cat > add-booking-workflow.mjs << 'EOF'
+        import fs from 'fs/promises';
+        
+        async function addBooking() {
+          const targetDate = process.env.TARGET_DATE;
+          const bookingDate = process.env.BOOKING_DATE;
+          const startTime = process.env.START_TIME;
+          const endTime = process.env.END_TIME;
+          const resource = process.env.RESOURCE;
+          const description = process.env.DESCRIPTION;
+          const replaceExisting = process.env.REPLACE_EXISTING === 'true';
+          
+          console.log(`📝 Adding booking: ${targetDate} ${startTime}-${endTime}`);
+          
+          // Load existing configuration
+          let config;
+          try {
+            const configFile = await fs.readFile('booking-config.json', 'utf8');
+            config = JSON.parse(configFile);
+          } catch (error) {
+            console.log('📋 Creating new booking configuration');
+            config = { bookings: [] };
+          }
+          
+          // Check for existing booking
+          const existingIndex = config.bookings.findIndex(b => b.targetDate === targetDate);
+          if (existingIndex !== -1) {
+            if (!replaceExisting) {
+              console.log(`❌ Booking for ${targetDate} already exists:`);
+              console.log(`   Current: ${config.bookings[existingIndex].start}-${config.bookings[existingIndex].end} (${config.bookings[existingIndex].enabled ? 'enabled' : 'disabled'})`);
+              console.log(`   Use "Replace existing" option to overwrite`);
+              process.exit(1);
+            }
+            console.log(`🔄 Replacing existing booking for ${targetDate}`);
+            config.bookings.splice(existingIndex, 1);
+          }
+          
+          // Create new booking
+          const newBooking = {
+            id: `booking-${targetDate}`,
+            targetDate: targetDate,
+            bookingDate: bookingDate,
+            start: startTime,
+            end: endTime,
+            resource: resource,
+            description: description,
+            enabled: true,
+            addedAt: new Date().toISOString(),
+            addedBy: 'github-workflow'
+          };
+          
+          // Add and sort bookings
+          config.bookings.push(newBooking);
+          config.bookings.sort((a, b) => a.targetDate.localeCompare(b.targetDate));
+          
+          // Save configuration
+          await fs.writeFile('booking-config.json', JSON.stringify(config, null, 2));
+          
+          console.log(`✅ Successfully added booking for ${targetDate}`);
+          console.log(`📋 Booking will execute on ${bookingDate} at 18:01 Netherlands time`);
+          console.log(`🎯 Total bookings in queue: ${config.bookings.filter(b => b.enabled).length}`);
+        }
+        
+        addBooking().catch(error => {
+          console.error(`❌ Error: ${error.message}`);
+          process.exit(1);
+        });
+        EOF
+        
+        # Run the script
+        TARGET_DATE="${{ github.event.inputs.target_date }}" \
+        BOOKING_DATE="$BOOKING_DATE" \
+        START_TIME="${{ github.event.inputs.start_time }}" \
+        END_TIME="${{ github.event.inputs.end_time }}" \
+        RESOURCE="${{ github.event.inputs.resource }}" \
+        DESCRIPTION="${{ github.event.inputs.description }}" \
+        REPLACE_EXISTING="${{ github.event.inputs.replace_existing }}" \
+        node add-booking-workflow.mjs
+        
+    - name: Commit changes
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add booking-config.json
+        
+        if git diff --staged --quiet; then
+          echo "📭 No changes to commit"
+        else
+          git commit -m "📝 Add booking: ${{ github.event.inputs.target_date }} ${{ github.event.inputs.start_time }}-${{ github.event.inputs.end_time }}
+
+          🎯 Target: ${{ github.event.inputs.target_date }}
+          ⏰ Time: ${{ github.event.inputs.start_time }} - ${{ github.event.inputs.end_time }}
+          🏢 Resource: ${{ github.event.inputs.resource }}
+          📝 Description: ${{ github.event.inputs.description }}
+          📅 Will execute: $BOOKING_DATE at 18:01"
+          
+          git push
+          echo "✅ Booking added and committed to repository"
+        fi
+        
+    - name: Display final status
+      run: |
+        echo "🎉 Booking successfully scheduled!"
+        echo ""
+        echo "📋 Summary:"
+        echo "   🎯 Target Date: ${{ github.event.inputs.target_date }}"
+        echo "   ⏰ Time Slot: ${{ github.event.inputs.start_time }} - ${{ github.event.inputs.end_time }}"
+        echo "   🏢 Resource: ${{ github.event.inputs.resource }}"
+        echo "   📝 Description: ${{ github.event.inputs.description }}"
+        echo "   📅 Execution: $BOOKING_DATE at 18:01 Netherlands time"
+        echo ""
+        echo "🤖 The daily scheduler will automatically execute this booking at the optimal time!"
+        echo "📋 To view all bookings, run the 'List Bookings' workflow"

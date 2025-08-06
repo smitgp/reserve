@@ -1,0 +1,371 @@
+name: 🎛️ Manage All Bookings
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'What would you like to do?'
+        required: true
+        type: choice
+        options:
+          - 'list-all'
+          - 'list-upcoming'
+          - 'add-booking'
+          - 'remove-booking'
+          - 'disable-booking'
+          - 'enable-booking'
+          - 'clear-all-disabled'
+          - 'clear-all-completed'
+        default: 'list-upcoming'
+      
+      # Booking details (used for add/remove/enable/disable)
+      target_date:
+        description: 'Target date (YYYY-MM-DD) - for add/remove/enable/disable actions'
+        required: false
+        type: string
+        default: ''
+      start_time:
+        description: 'Start time (HH:MM) - for add action only'
+        required: false
+        type: string
+        default: '09:00'
+      end_time:
+        description: 'End time (HH:MM) - for add action only'
+        required: false
+        type: string
+        default: '17:00'
+      resource:
+        description: 'Resource ID - for add action only'
+        required: false
+        type: string
+        default: '565'
+      description:
+        description: 'Booking description - for add action only'
+        required: false
+        type: string
+        default: 'Library work session'
+
+jobs:
+  manage-bookings:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+        
+    - name: Validate inputs
+      run: |
+        ACTION="${{ github.event.inputs.action }}"
+        echo "🎛️ Action: $ACTION"
+        
+        # Validate date if required
+        if [[ "$ACTION" =~ ^(add-booking|remove-booking|disable-booking|enable-booking)$ ]]; then
+          if [ -z "${{ github.event.inputs.target_date }}" ]; then
+            echo "❌ Target date is required for action: $ACTION"
+            exit 1
+          fi
+          
+          if ! date -d "${{ github.event.inputs.target_date }}" >/dev/null 2>&1; then
+            echo "❌ Invalid date format. Use YYYY-MM-DD"
+            exit 1
+          fi
+        fi
+        
+    - name: Execute booking management action
+      run: |
+        # Create comprehensive booking management script
+        cat > manage-all-bookings.mjs << 'EOF'
+        import fs from 'fs/promises';
+        
+        function formatDate(dateStr) {
+          const date = new Date(dateStr + 'T00:00:00Z');
+          return date.toLocaleDateString('en-US', { 
+            weekday: 'short', 
+            year: 'numeric', 
+            month: 'short', 
+            day: 'numeric' 
+          });
+        }
+        
+        function daysUntil(dateStr) {
+          const target = new Date(dateStr + 'T00:00:00Z');
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const diff = Math.ceil((target - today) / (1000 * 60 * 60 * 24));
+          return diff;
+        }
+        
+        function calculateBookingDate(targetDate) {
+          const target = new Date(targetDate + 'T00:00:00Z');
+          const booking = new Date(target);
+          booking.setDate(booking.getDate() - 2);
+          return booking.toISOString().split('T')[0];
+        }
+        
+        async function manageBookings() {
+          const action = process.env.ACTION;
+          const targetDate = process.env.TARGET_DATE;
+          const startTime = process.env.START_TIME;
+          const endTime = process.env.END_TIME;
+          const resource = process.env.RESOURCE;
+          const description = process.env.DESCRIPTION;
+          
+          console.log(`🎛️ Executing action: ${action}`);
+          
+          try {
+            // Load configuration
+            let config;
+            try {
+              const configFile = await fs.readFile('booking-config.json', 'utf8');
+              config = JSON.parse(configFile);
+            } catch (error) {
+              console.log('📋 Creating new booking configuration');
+              config = { bookings: [] };
+            }
+            
+            let changed = false;
+            let commitMessage = '';
+            
+            if (action === 'list-all' || action === 'list-upcoming') {
+              const showAll = action === 'list-all';
+              let bookings = config.bookings || [];
+              
+              if (!showAll) {
+                const today = new Date().toISOString().split('T')[0];
+                bookings = bookings.filter(b => b.targetDate >= today);
+              }
+              
+              console.log('=' .repeat(60));
+              console.log(`📋 ${showAll ? 'ALL' : 'UPCOMING'} BOOKINGS`);
+              console.log('=' .repeat(60));
+              
+              if (bookings.length === 0) {
+                console.log('📭 No bookings found');
+                console.log('💡 Use the "add-booking" action to create your first booking!');
+                return;
+              }
+              
+              // Group and display bookings
+              const activeBookings = bookings.filter(b => b.enabled && !b.completedAt);
+              const completedBookings = bookings.filter(b => b.completedAt);
+              const disabledBookings = bookings.filter(b => !b.enabled && !b.completedAt);
+              const failedBookings = bookings.filter(b => b.lastFailure && b.enabled);
+              
+              if (activeBookings.length > 0) {
+                console.log('\n🟢 ACTIVE BOOKINGS:');
+                activeBookings.forEach((booking, index) => {
+                  const days = daysUntil(booking.targetDate);
+                  const timeUntil = days > 0 ? `${days} days` : days === 0 ? 'today' : `${Math.abs(days)} days ago`;
+                  
+                  console.log(`\n${index + 1}. ${booking.description}`);
+                  console.log(`   🎯 Target: ${formatDate(booking.targetDate)} (${timeUntil})`);
+                  console.log(`   ⏰ Time: ${booking.start} - ${booking.end} (Resource ${booking.resource})`);
+                  console.log(`   📅 Books on: ${formatDate(booking.bookingDate)} at 18:01`);
+                });
+              }
+              
+              if (completedBookings.length > 0) {
+                console.log('\n✅ COMPLETED BOOKINGS:');
+                completedBookings.forEach((booking, index) => {
+                  console.log(`\n${index + 1}. ${booking.description}`);
+                  console.log(`   🎯 ${formatDate(booking.targetDate)} ${booking.start}-${booking.end}`);
+                  console.log(`   ✅ Completed: ${new Date(booking.completedAt).toLocaleString()}`);
+                });
+              }
+              
+              if (failedBookings.length > 0) {
+                console.log('\n❌ FAILED BOOKINGS:');
+                failedBookings.forEach((booking, index) => {
+                  console.log(`\n${index + 1}. ${booking.description}`);
+                  console.log(`   🎯 ${formatDate(booking.targetDate)} ${booking.start}-${booking.end}`);
+                  console.log(`   ❌ Error: ${booking.lastFailure.error}`);
+                });
+              }
+              
+              if (disabledBookings.length > 0) {
+                console.log('\n🔴 DISABLED BOOKINGS:');
+                disabledBookings.forEach((booking, index) => {
+                  console.log(`\n${index + 1}. ${booking.description}`);
+                  console.log(`   🎯 ${formatDate(booking.targetDate)} ${booking.start}-${booking.end}`);
+                });
+              }
+              
+              console.log('\n📊 SUMMARY:');
+              console.log(`   🟢 Active: ${activeBookings.length}`);
+              console.log(`   ✅ Completed: ${completedBookings.length}`);
+              console.log(`   ❌ Failed: ${failedBookings.length}`);
+              console.log(`   🔴 Disabled: ${disabledBookings.length}`);
+              console.log(`   📊 Total: ${bookings.length}`);
+              
+            } else if (action === 'add-booking') {
+              const bookingDate = calculateBookingDate(targetDate);
+              
+              // Check for existing booking
+              const existingIndex = config.bookings.findIndex(b => b.targetDate === targetDate);
+              if (existingIndex !== -1) {
+                console.log(`❌ Booking for ${targetDate} already exists`);
+                console.log(`   Current: ${config.bookings[existingIndex].description}`);
+                console.log('💡 Use "remove-booking" first if you want to replace it');
+                return;
+              }
+              
+              const newBooking = {
+                id: `booking-${targetDate}`,
+                targetDate: targetDate,
+                bookingDate: bookingDate,
+                start: startTime,
+                end: endTime,
+                resource: resource,
+                description: description,
+                enabled: true,
+                addedAt: new Date().toISOString(),
+                addedBy: 'github-workflow'
+              };
+              
+              config.bookings.push(newBooking);
+              config.bookings.sort((a, b) => a.targetDate.localeCompare(b.targetDate));
+              changed = true;
+              commitMessage = `📝 Add booking: ${targetDate} ${startTime}-${endTime}`;
+              
+              console.log(`✅ Added booking for ${targetDate}`);
+              console.log(`📅 Will execute on ${bookingDate} at 18:01`);
+              
+            } else if (action.includes('booking')) {
+              const bookingIndex = config.bookings.findIndex(b => b.targetDate === targetDate);
+              if (bookingIndex === -1) {
+                console.log(`❌ No booking found for ${targetDate}`);
+                return;
+              }
+              
+              const booking = config.bookings[bookingIndex];
+              console.log(`📝 Found: ${booking.description} (${booking.enabled ? 'enabled' : 'disabled'})`);
+              
+              if (action === 'remove-booking') {
+                config.bookings.splice(bookingIndex, 1);
+                changed = true;
+                commitMessage = `🗑️ Remove booking: ${targetDate}`;
+                console.log(`✅ Removed booking for ${targetDate}`);
+                
+              } else if (action === 'disable-booking') {
+                if (booking.enabled) {
+                  booking.enabled = false;
+                  booking.disabledAt = new Date().toISOString();
+                  changed = true;
+                  commitMessage = `🔴 Disable booking: ${targetDate}`;
+                  console.log(`🔴 Disabled booking for ${targetDate}`);
+                } else {
+                  console.log(`ℹ️ Booking was already disabled`);
+                }
+                
+              } else if (action === 'enable-booking') {
+                if (!booking.enabled) {
+                  booking.enabled = true;
+                  delete booking.disabledAt;
+                  delete booking.completedAt;
+                  changed = true;
+                  commitMessage = `🟢 Enable booking: ${targetDate}`;
+                  console.log(`🟢 Enabled booking for ${targetDate}`);
+                } else {
+                  console.log(`ℹ️ Booking was already enabled`);
+                }
+              }
+              
+            } else if (action === 'clear-all-disabled') {
+              const initialLength = config.bookings.length;
+              config.bookings = config.bookings.filter(b => b.enabled || b.completedAt);
+              const removed = initialLength - config.bookings.length;
+              
+              if (removed > 0) {
+                changed = true;
+                commitMessage = `🧹 Clear ${removed} disabled bookings`;
+                console.log(`✅ Removed ${removed} disabled bookings`);
+              } else {
+                console.log(`ℹ️ No disabled bookings to remove`);
+              }
+              
+            } else if (action === 'clear-all-completed') {
+              const initialLength = config.bookings.length;
+              config.bookings = config.bookings.filter(b => !b.completedAt);
+              const removed = initialLength - config.bookings.length;
+              
+              if (removed > 0) {
+                changed = true;
+                commitMessage = `🧹 Clear ${removed} completed bookings`;
+                console.log(`✅ Removed ${removed} completed bookings`);
+              } else {
+                console.log(`ℹ️ No completed bookings to remove`);
+              }
+            }
+            
+            if (changed) {
+              await fs.writeFile('booking-config.json', JSON.stringify(config, null, 2));
+              console.log(`💾 Configuration updated`);
+              
+              // Set environment variable for commit
+              const fs_sync = await import('fs');
+              fs_sync.appendFileSync(process.env.GITHUB_ENV, `COMMIT_MESSAGE=${commitMessage}\n`);
+              fs_sync.appendFileSync(process.env.GITHUB_ENV, `CHANGES_MADE=true\n`);
+            } else {
+              const fs_sync = await import('fs');
+              fs_sync.appendFileSync(process.env.GITHUB_ENV, `CHANGES_MADE=false\n`);
+            }
+            
+          } catch (error) {
+            console.error(`❌ Error: ${error.message}`);
+            process.exit(1);
+          }
+        }
+        
+        manageBookings().catch(error => {
+          console.error(`❌ Fatal error: ${error.message}`);
+          process.exit(1);
+        });
+        EOF
+        
+        # Run the script
+        ACTION="${{ github.event.inputs.action }}" \
+        TARGET_DATE="${{ github.event.inputs.target_date }}" \
+        START_TIME="${{ github.event.inputs.start_time }}" \
+        END_TIME="${{ github.event.inputs.end_time }}" \
+        RESOURCE="${{ github.event.inputs.resource }}" \
+        DESCRIPTION="${{ github.event.inputs.description }}" \
+        node manage-all-bookings.mjs
+        
+    - name: Commit changes
+      if: env.CHANGES_MADE == 'true'
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add booking-config.json
+        
+        if git diff --staged --quiet; then
+          echo "📭 No changes to commit"
+        else
+          git commit -m "$COMMIT_MESSAGE
+
+          🔧 Action: ${{ github.event.inputs.action }}
+          📅 Date: ${{ github.event.inputs.target_date }}
+          🤖 Via: Booking Management Workflow"
+          
+          git push
+          echo "✅ Changes committed successfully"
+        fi
+        
+    - name: Display final status
+      run: |
+        echo ""
+        echo "🎉 Booking management operation completed!"
+        echo ""
+        echo "📋 Quick Actions:"
+        echo "   • To view bookings: Run this workflow with 'list-upcoming'"
+        echo "   • To add booking: Run this workflow with 'add-booking'"
+        echo "   • To remove booking: Run this workflow with 'remove-booking'"
+        echo ""
+        echo "🤖 The daily scheduler runs automatically at 18:01 Netherlands time"
