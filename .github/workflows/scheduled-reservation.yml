@@ -1,0 +1,110 @@
+name: Scheduled Library Reservation
+
+on:
+  # Schedule: Run every day at 7:00 AM UTC (8/9 AM Netherlands time)
+  schedule:
+    - cron: '0 7 * * *'
+  
+  # Keep manual trigger option for testing
+  workflow_dispatch:
+    inputs:
+      date:
+        description: 'Target date (YYYY-MM-DD) - leave empty for tomorrow'
+        required: false
+        type: string
+      start_time:
+        description: 'Start time (HH:MM)'
+        required: false
+        default: '10:00'
+        type: string
+      end_time:
+        description: 'End time (HH:MM)'
+        required: false
+        default: '17:00'
+        type: string
+      resource:
+        description: 'Resource ID'
+        required: false
+        default: '565'
+        type: string
+
+jobs:
+  reserve:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Create .env file
+      env:
+        EMAIL: ${{ secrets.EMAIL }}
+        LOCATION: ${{ secrets.LOCATION }}
+        TYPE: ${{ secrets.TYPE }}
+        BASE_EMAIL: ${{ secrets.BASE_EMAIL }}
+        ENGINE_BODY: ${{ secrets.ENGINE_BODY }}
+      run: |
+        cat > .env << EOF
+        EMAIL=${{ secrets.EMAIL }}
+        LOCATION=${{ secrets.LOCATION }}
+        TYPE=${{ secrets.TYPE }}
+        BASE_EMAIL=${{ secrets.BASE_EMAIL }}
+        ENGINE_BODY=${{ secrets.ENGINE_BODY }}
+        EOF
+        
+    - name: Calculate target date
+      id: date
+      run: |
+        if [ -n "${{ github.event.inputs.date }}" ]; then
+          TARGET_DATE="${{ github.event.inputs.date }}"
+        else
+          # Calculate tomorrow's date
+          TARGET_DATE=$(date -d '+1 day' '+%Y-%m-%d')
+        fi
+        echo "target_date=$TARGET_DATE" >> $GITHUB_OUTPUT
+        echo "🎯 Target date: $TARGET_DATE"
+        
+    - name: Set booking parameters
+      id: params
+      run: |
+        START_TIME="${{ github.event.inputs.start_time || '10:00' }}"
+        END_TIME="${{ github.event.inputs.end_time || '17:00' }}"
+        RESOURCE="${{ github.event.inputs.resource || '565' }}"
+        
+        echo "start_time=$START_TIME" >> $GITHUB_OUTPUT
+        echo "end_time=$END_TIME" >> $GITHUB_OUTPUT
+        echo "resource=$RESOURCE" >> $GITHUB_OUTPUT
+        
+        echo "📋 Booking parameters:"
+        echo "  Start: $START_TIME"
+        echo "  End: $END_TIME" 
+        echo "  Resource: $RESOURCE"
+        
+    - name: Make scheduled reservation
+      env:
+        TARGET_DATE: ${{ steps.date.outputs.target_date }}
+        START_TIME: ${{ steps.params.outputs.start_time }}
+        END_TIME: ${{ steps.params.outputs.end_time }}
+        RESOURCE: ${{ steps.params.outputs.resource }}
+      run: |
+        echo "🎯 Scheduled reservation for $TARGET_DATE from $START_TIME to $END_TIME on Resource $RESOURCE"
+        node reserve.mjs --date "$TARGET_DATE" --start "$START_TIME" --end "$END_TIME" --resource "$RESOURCE"
+        
+    - name: Upload logs (if any failures)
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: scheduled-reservation-logs-${{ steps.date.outputs.target_date }}
+        path: |
+          *.log
+          debug_*.html
+        retention-days: 7
