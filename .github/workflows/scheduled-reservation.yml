@@ -1,9 +1,10 @@
 name: Scheduled Library Reservation
 
 on:
-  # Schedule: Run every day at 7:00 AM UTC (8/9 AM Netherlands time)
+  # Schedule: Run every day at 17:01 UTC (18:01/19:01 Netherlands time)
+  # This books day-after-tomorrow when the booking window opens
   schedule:
-    - cron: '0 7 * * *'
+    - cron: '1 17 * * *'
   
   # Keep manual trigger option for testing
   workflow_dispatch:
@@ -67,11 +68,12 @@ jobs:
         if [ -n "${{ github.event.inputs.date }}" ]; then
           TARGET_DATE="${{ github.event.inputs.date }}"
         else
-          # Calculate tomorrow's date
-          TARGET_DATE=$(date -d '+1 day' '+%Y-%m-%d')
+          # Calculate day after tomorrow (2 days from now)
+          # This runs at 18:01 to book the day that just became available
+          TARGET_DATE=$(date -d '+2 days' '+%Y-%m-%d')
         fi
         echo "target_date=$TARGET_DATE" >> $GITHUB_OUTPUT
-        echo "🎯 Target date: $TARGET_DATE"
+        echo "🎯 Target date: $TARGET_DATE (booking 2 days ahead at optimal time)"
         
     - name: Set booking parameters
       id: params
@@ -96,7 +98,9 @@ jobs:
         END_TIME: ${{ steps.params.outputs.end_time }}
         RESOURCE: ${{ steps.params.outputs.resource }}
       run: |
-        echo "🎯 Scheduled reservation for $TARGET_DATE from $START_TIME to $END_TIME on Resource $RESOURCE"
+        echo "🎯 Strategic booking: Running at 18:01 to reserve $TARGET_DATE"
+        echo "📅 Booking $TARGET_DATE from $START_TIME to $END_TIME on Resource $RESOURCE"
+        echo "⏰ Optimal timing: Booking 2 days ahead when window opens"
         node reserve.mjs --date "$TARGET_DATE" --start "$START_TIME" --end "$END_TIME" --resource "$RESOURCE"
         
     - name: Upload logs (if any failures)
