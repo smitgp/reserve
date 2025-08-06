@@ -1,0 +1,94 @@
+name: Daily Library Reservation
+
+on:
+  # Run every day at 6:00 AM UTC (adjust timezone as needed)
+  schedule:
+    - cron: '0 6 * * *'
+  
+  # Allow manual triggering for testing
+  workflow_dispatch:
+    inputs:
+      date:
+        description: 'Target date (YYYY-MM-DD, leave empty for tomorrow)'
+        required: false
+        type: string
+      start_time:
+        description: 'Start time (HH:MM)'
+        required: false
+        default: '09:00'
+        type: string
+      end_time:
+        description: 'End time (HH:MM)'
+        required: false
+        default: '18:00'
+        type: string
+      resource:
+        description: 'Resource ID'
+        required: false
+        default: '565'
+        type: string
+
+jobs:
+  reserve:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Create .env file
+      env:
+        EMAIL: ${{ secrets.EMAIL }}
+        LOCATION: ${{ secrets.LOCATION }}
+        TYPE: ${{ secrets.TYPE }}
+        BASE_EMAIL: ${{ secrets.BASE_EMAIL }}
+        ENGINE_BODY: ${{ secrets.ENGINE_BODY }}
+      run: |
+        cat > .env << EOF
+        EMAIL=${{ secrets.EMAIL }}
+        LOCATION=${{ secrets.LOCATION }}
+        TYPE=${{ secrets.TYPE }}
+        BASE_EMAIL=${{ secrets.BASE_EMAIL }}
+        ENGINE_BODY=${{ secrets.ENGINE_BODY }}
+        EOF
+        
+    - name: Calculate target date
+      id: date
+      run: |
+        if [ -n "${{ github.event.inputs.date }}" ]; then
+          TARGET_DATE="${{ github.event.inputs.date }}"
+        else
+          # Calculate tomorrow's date
+          TARGET_DATE=$(date -d '+1 day' '+%Y-%m-%d')
+        fi
+        echo "target_date=$TARGET_DATE" >> $GITHUB_OUTPUT
+        echo "Target date: $TARGET_DATE"
+        
+    - name: Make reservation
+      env:
+        TARGET_DATE: ${{ steps.date.outputs.target_date }}
+        START_TIME: ${{ github.event.inputs.start_time || '09:00' }}
+        END_TIME: ${{ github.event.inputs.end_time || '18:00' }}
+        RESOURCE: ${{ github.event.inputs.resource || '565' }}
+      run: |
+        echo "🎯 Attempting reservation for $TARGET_DATE from $START_TIME to $END_TIME on Resource $RESOURCE"
+        node reserve.mjs --date "$TARGET_DATE" --start "$START_TIME" --end "$END_TIME" --resource "$RESOURCE"
+        
+    - name: Upload logs (if any failures)
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: reservation-logs-${{ steps.date.outputs.target_date }}
+        path: |
+          *.log
+          debug_*.html
+        retention-days: 7

@@ -1,0 +1,72 @@
+name: Manual Reservation
+
+on:
+  workflow_dispatch:
+    inputs:
+      date:
+        description: 'Target date (YYYY-MM-DD)'
+        required: true
+        type: string
+      start_time:
+        description: 'Start time (HH:MM)'
+        required: true
+        default: '09:00'
+        type: string
+      end_time:
+        description: 'End time (HH:MM)'
+        required: true
+        default: '18:00'
+        type: string
+      resource:
+        description: 'Resource ID'
+        required: true
+        default: '565'
+        type: string
+
+jobs:
+  reserve:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Create .env file
+      env:
+        EMAIL: ${{ secrets.EMAIL }}
+        LOCATION: ${{ secrets.LOCATION }}
+        TYPE: ${{ secrets.TYPE }}
+        BASE_EMAIL: ${{ secrets.BASE_EMAIL }}
+        ENGINE_BODY: ${{ secrets.ENGINE_BODY }}
+      run: |
+        cat > .env << EOF
+        EMAIL=${{ secrets.EMAIL }}
+        LOCATION=${{ secrets.LOCATION }}
+        TYPE=${{ secrets.TYPE }}
+        BASE_EMAIL=${{ secrets.BASE_EMAIL }}
+        ENGINE_BODY=${{ secrets.ENGINE_BODY }}
+        EOF
+        
+    - name: Make reservation
+      run: |
+        echo "🎯 Manual reservation for ${{ github.event.inputs.date }} from ${{ github.event.inputs.start_time }} to ${{ github.event.inputs.end_time }} on Resource ${{ github.event.inputs.resource }}"
+        node reserve.mjs --date "${{ github.event.inputs.date }}" --start "${{ github.event.inputs.start_time }}" --end "${{ github.event.inputs.end_time }}" --resource "${{ github.event.inputs.resource }}"
+        
+    - name: Upload logs (if any failures)
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: manual-reservation-logs-${{ github.event.inputs.date }}
+        path: |
+          *.log
+          debug_*.html
+        retention-days: 7
