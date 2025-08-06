@@ -77,7 +77,7 @@ jobs:
           const endTime = process.env.END_TIME;
           const resource = process.env.RESOURCE;
           
-          console.log(`📝 Adding booking: ${targetDate} ${startTime}-${endTime} (Resource ${resource})`);
+          console.log('📝 Adding booking: ' + targetDate + ' ' + startTime + '-' + endTime + ' (Resource ' + resource + ')');
           
           // Load existing configuration
           let config;
@@ -96,10 +96,10 @@ jobs:
           // Check for existing booking
           const existingIndex = config.bookings.findIndex(b => b.targetDate === targetDate);
           if (existingIndex !== -1) {
-            console.log(`❌ Booking for ${targetDate} already exists:`);
-            console.log(`   Current: ${config.bookings[existingIndex].start}-${config.bookings[existingIndex].end} (Resource ${config.bookings[existingIndex].resource})`);
-            console.log(`   New: ${startTime}-${endTime} (Resource ${resource})`);
-            console.log(`🔄 Replacing existing booking`);
+            console.log('❌ Booking for ' + targetDate + ' already exists:');
+            console.log('   Current: ' + config.bookings[existingIndex].start + '-' + config.bookings[existingIndex].end + ' (Resource ' + config.bookings[existingIndex].resource + ')');
+            console.log('   New: ' + startTime + '-' + endTime + ' (Resource ' + resource + ')');
+            console.log('🔄 Replacing existing booking');
             config.bookings.splice(existingIndex, 1);
           }
           
@@ -123,23 +123,22 @@ jobs:
           });
           
           // Add header comment
-          const headerComment = `# Library Booking Schedule
-# Simple YAML configuration for automatic library bookings
-#
-# Each booking will execute 2 days before the target date at 18:01 Netherlands time
-# Example: ${targetDate} booking will execute on ${process.env.BOOKING_DATE} at 18:01
-
-`;
+          let headerComment = '# Library Booking Schedule\n';
+          headerComment += '# Simple YAML configuration for automatic library bookings\n';
+          headerComment += '#\n';
+          headerComment += '# Each booking will execute 2 days before the target date at 18:01 Netherlands time\n';
+          headerComment += '# Example: ' + targetDate + ' booking will execute on ' + process.env.BOOKING_DATE + ' at 18:01\n';
+          headerComment += '\n';
           
           await fs.writeFile('bookings.yml', headerComment + yamlContent);
           
-          console.log(`✅ Successfully added booking for ${targetDate}`);
-          console.log(`📋 Booking will execute on ${process.env.BOOKING_DATE} at 18:01 Netherlands time`);
-          console.log(`🎯 Total bookings in queue: ${config.bookings.length}`);
+          console.log('✅ Successfully added booking for ' + targetDate);
+          console.log('📋 Booking will execute on ' + process.env.BOOKING_DATE + ' at 18:01 Netherlands time');
+          console.log('🎯 Total bookings in queue: ' + config.bookings.length);
         }
         
         addBooking().catch(error => {
-          console.error(`❌ Error: ${error.message}`);
+          console.error('❌ Error: ' + error.message);
           process.exit(1);
         });
         EOF
