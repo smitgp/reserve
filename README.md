@@ -1,193 +1,167 @@
 # 🎯 Smart Library Booking Scheduler
 
-**The ultimate hands-off library booking system! Schedule bookings entirely through GitHub's web interface - no local git operations required!**
+**The ultimate hands-off library booking system! Simple YAML configuration with automatic execution - no local git operations required!**
 
 ## ✨ The Perfect Solution
 
 You want to reserve library room 565 for **2025-12-15 from 09:00-17:00**. Instead of:
 - ❌ Setting alarms for 2025-12-13 at 18:01
-- ❌ Touching your local repository
-- ❌ Manual git commits and pushes
 - ❌ Manual booking when slots open
+- ❌ Complex configuration files
 
 You can now:
-- ✅ **Schedule from anywhere** via GitHub web interface
-- ✅ **Mobile friendly** - book from your phone
-- ✅ **Zero local operations** - everything in the cloud
-- ✅ **Perfect timing** - automatic execution at 18:01
+- ✅ **Simple YAML config** you can bookmark and view easily
+- ✅ **Add bookings** via GitHub web interface
+- ✅ **Auto-execution** at perfect timing
+- ✅ **Mobile friendly** - manage from anywhere
 
-## 🚀 Quick Start (Zero Local Setup!)
+## 🚀 Quick Start
 
-### 1. Schedule Your First Booking
+### 1. Add Your First Booking
 
-1. **Go to your GitHub repository** → **Actions** tab
-2. **Click "📝 Add New Booking"** → **Run workflow**
+1. **Go to** GitHub → Your Repository → **Actions**
+2. **Click** "📝 Add New Booking" → **Run workflow**
 3. **Fill the form:**
    - Target date: `2025-12-15`
    - Start time: `09:00`
    - End time: `17:00`
-   - Description: `Christmas prep day`
-4. **Click "Run workflow"** ✅
+   - Resource: `565` (default)
+4. **Click** "Run workflow" ✅
 
-**That's it!** GitHub will:
-- ⏰ Wait until **2025-12-13 at 18:01** Netherlands time
-- 🎯 Automatically book **2025-12-15 09:00-17:00** on resource **565**
-- ✅ Update status and commit results back to repository
+### 2. View Your Schedule
 
-### 2. View Your Bookings
+**Bookmark** your `bookings.yml` file in your browser! It looks like this:
 
-1. **Actions** → **📋 List All Bookings** → **Run workflow**
-2. Check the workflow output to see:
+```yaml
+# Library Booking Schedule
+# Each booking executes 2 days before target date at 18:01 Netherlands time
 
-```
-📋 UPCOMING BOOKINGS
-
-🟢 ACTIVE BOOKINGS:
-
-1. Christmas prep day
-   🎯 Target: Mon, Dec 15, 2025 (132 days)
-   ⏰ Time: 09:00 - 17:00 (Resource 565)
-   📅 Books on: Sat, Dec 13, 2025 at 18:01
-
-📊 SUMMARY:
-   🟢 Active: 1
-   📊 Total: 1
+bookings:
+  - targetDate: "2025-12-15"
+    start: "09:00"
+    end: "17:00"
+    resource: "565"
+    
+  - targetDate: "2025-12-20"
+    start: "10:00"
+    end: "16:00"
+    resource: "565"
 ```
 
-### 3. Manage Your Bookings
+**Clean, simple, human-readable!** 📖
 
-- **🗑️ Remove Booking**: Actions → **🗑️ Remove Booking** → Enter date → Run
-- **🎛️ All-in-One**: Actions → **🎛️ Manage All Bookings** → Pick action → Run
+### 3. Remove Bookings
 
-## 🎛️ Available Workflows
+1. **Actions** → **🗑️ Remove Booking(s)** → **Run workflow**
+2. **Options:**
+   - **Specific date**: Enter `2025-12-15` to remove that booking
+   - **Remove all**: Leave date empty to clear entire schedule
 
-### Core Workflows
+## 📋 Available Workflows
+
+### Core Operations (Only 2 Workflows!)
 
 1. **📝 Add New Booking**
-   - Add bookings via simple form
+   - Simple form input
    - Auto-calculates execution timing
-   - Prevents duplicates
+   - Updates YAML automatically
 
-2. **📋 List All Bookings** 
-   - View all current bookings
-   - See status, timing, descriptions
-   - Filter upcoming vs all
+2. **🗑️ Remove Booking(s)**
+   - Remove specific booking by date
+   - Remove ALL bookings (leave date empty)
+   - Clean YAML maintenance
 
-3. **🗑️ Remove Booking**
-   - Remove specific bookings
-   - Enable/disable bookings
-   - Choose action type
-
-4. **🎛️ Manage All Bookings**
-   - One workflow for everything
-   - List, add, remove, enable, disable
-   - Bulk cleanup operations
-
-5. **⏰ Library Booking Scheduler**
-   - Runs automatically daily at 18:01
+3. **⏰ Library Booking Scheduler** *(Automatic)*
+   - Runs daily at 18:01 Netherlands time
    - Executes scheduled bookings
-   - Updates status back to repository
+   - Removes completed bookings from YAML
 
-## 📱 Mobile-Friendly Booking
+## 🎯 YAML Configuration
 
-Perfect for booking on-the-go:
+### Simple Structure
+```yaml
+bookings:
+  - targetDate: "YYYY-MM-DD"    # When you want the room
+    start: "HH:MM"              # Start time
+    end: "HH:MM"                # End time  
+    resource: "565"             # Room number
+```
 
-1. **Open GitHub app** or mobile browser
-2. **Navigate to** your repository → Actions
-3. **Tap "📝 Add New Booking"**
+### Key Benefits
+- **📖 Human readable** - bookmark in browser
+- **🎯 Minimal** - only essential fields
+- **📅 Auto-calculated** - booking date inferred (target - 2 days)
+- **🧹 Self-cleaning** - completed bookings auto-removed
+
+## 🎮 Real-World Usage
+
+### Weekly Sessions
+```yaml
+bookings:
+  - targetDate: "2025-12-06"
+    start: "09:00"
+    end: "17:00"
+    resource: "565"
+    
+  - targetDate: "2025-12-13"
+    start: "09:00"
+    end: "17:00"
+    resource: "565"
+```
+
+### Project Crunch Time
+```yaml
+bookings:
+  - targetDate: "2025-11-28"
+    start: "09:00"
+    end: "18:00"
+    resource: "565"
+    
+  - targetDate: "2025-11-29"
+    start: "09:00"
+    end: "18:00"
+    resource: "565"
+    
+  - targetDate: "2025-11-30"
+    start: "09:00"
+    end: "15:00"
+    resource: "565"
+```
+
+## 🤖 How It Works
+
+### The Timeline
+```
+Today: 2025-08-06
+   ↓
+   📝 You add: 2025-12-15 booking via workflow
+   ↓
+   📋 System calculates: Execute on 2025-12-13
+   ↓
+   ⏰ 2025-12-13 at 18:01: Auto-execution
+   ↓
+   ✅ 2025-12-15: Room reserved!
+   ↓
+   🧹 Booking removed from YAML (completed)
+```
+
+### Perfect Timing
+- **Target**: 2025-12-15 (when you want the room)
+- **Execution**: 2025-12-13 at 18:01 Netherlands time
+- **Why**: Library slots open exactly at 18:00, we book at 18:01
+
+## 📱 Mobile-Friendly Workflow
+
+1. **GitHub mobile app** or browser
+2. **Navigate** to repository → Actions
+3. **Tap** "📝 Add New Booking"
 4. **Fill form** and tap "Run workflow"
-5. **Done!** Booking scheduled from your phone
+5. **Bookmark** `bookings.yml` for easy viewing
 
-## 🎯 Real-World Workflows
-
-### Weekly Work Sessions
-```
-1. Actions → "📝 Add New Booking"
-2. Date: 2025-12-06, Time: 09:00-17:00, Desc: "Friday Focus #1"
-3. Date: 2025-12-13, Time: 09:00-17:00, Desc: "Friday Focus #2"
-4. Date: 2025-12-20, Time: 09:00-17:00, Desc: "Friday Focus #3"
-```
-
-### Project Deadlines
-```
-1. Actions → "📝 Add New Booking"
-2. Date: 2025-11-28, Time: 09:00-18:00, Desc: "Crunch Day 1"
-3. Date: 2025-11-29, Time: 09:00-18:00, Desc: "Crunch Day 2"
-4. Date: 2025-11-30, Time: 09:00-15:00, Desc: "Final Push"
-```
-
-### Conference Prep
-```
-1. Actions → "📝 Add New Booking"
-2. Date: 2026-03-10, Time: 10:00-16:00, Desc: "Presentation Prep"
-3. Date: 2026-03-15, Time: 09:00-12:00, Desc: "Final Rehearsal"
-```
-
-## 🎮 Workflow Reference
-
-### 📝 Add New Booking
-**Purpose**: Schedule new library bookings  
-**Inputs**:
-- `target_date` (required): YYYY-MM-DD format
-- `start_time` (required): HH:MM format
-- `end_time` (required): HH:MM format
-- `resource` (optional): Default 565
-- `description` (optional): Booking description
-- `replace_existing` (optional): Overwrite existing booking
-
-### 📋 List All Bookings
-**Purpose**: View current booking status  
-**Inputs**:
-- `show_all` (optional): Include past/completed bookings
-
-**Output**: Organized list of all bookings by status
-
-### 🗑️ Remove Booking
-**Purpose**: Manage individual bookings  
-**Inputs**:
-- `target_date` (required): Date of booking to manage
-- `action_type` (required): `remove`, `disable`, or `enable`
-
-### 🎛️ Manage All Bookings
-**Purpose**: One-stop booking management  
-**Inputs**:
-- `action` (required): Choose from:
-  - `list-all`: Show all bookings
-  - `list-upcoming`: Show upcoming only
-  - `add-booking`: Add new booking
-  - `remove-booking`: Remove specific booking
-  - `disable-booking`: Disable specific booking
-  - `enable-booking`: Enable specific booking
-  - `clear-all-disabled`: Remove all disabled
-  - `clear-all-completed`: Remove all completed
-- Plus booking details for add/remove actions
-
-## 🤖 How the Magic Works
-
-### The Complete Flow
-```
-1. 🖱️  You: GitHub Actions → "Add New Booking" → Fill form
-2. 🤖 GitHub: Automatically calculates booking date (target - 2 days)
-3. 💾 GitHub: Commits booking to repository configuration
-4. ⏰ GitHub: Daily scheduler runs at 18:01 Netherlands time
-5. 🎯 GitHub: On booking date, executes reservation automatically
-6. ✅ GitHub: Updates booking status and commits back
-7. 🎉 You: Library slot reserved perfectly!
-```
-
-### Technical Details
-
-- **Configuration**: All bookings stored in `booking-config.json`
-- **Execution**: Daily cron job at `1 17 * * *` (18:01 Netherlands time)
-- **Updates**: Status changes automatically committed back
-- **Reliability**: GitHub's infrastructure ensures perfect timing
-- **Mobile**: Works seamlessly on mobile GitHub
-
-## 🔧 GitHub Actions Setup
+## 🔧 Setup Requirements
 
 ### Required Repository Secrets
-
-Set these in **Settings** → **Secrets and Variables** → **Actions**:
+Set in **Settings** → **Secrets and Variables** → **Actions**:
 
 ```
 EMAIL=your-library-email@domain.com
@@ -197,70 +171,92 @@ BASE_EMAIL=your-gmail@gmail.com
 ENGINE_BODY=your-form-data
 ```
 
-### Permissions
+### Dependencies
+- **YAML parser** added automatically
+- **GitHub Actions** with write permissions
+- **Daily cron** schedule configured
 
-Ensure your repository has:
-- **Read and write permissions** for Actions
-- **Allow GitHub Actions to create and approve pull requests** (for commits)
+## 📊 Workflow Details
 
-## 📊 Booking Status Tracking
+### 📝 Add New Booking
+**Inputs:**
+- `target_date` (required): YYYY-MM-DD
+- `start_time` (required): HH:MM
+- `end_time` (required): HH:MM  
+- `resource` (optional): Default 565
 
-The system automatically tracks:
+**Process:**
+1. Validates inputs
+2. Calculates execution date (target - 2 days)
+3. Adds to YAML with nice formatting
+4. Commits to repository
 
-- **🟢 Active**: Enabled, waiting for execution
-- **✅ Completed**: Successfully booked
-- **❌ Failed**: Booking attempt failed (will retry)
-- **🔴 Disabled**: Manually disabled
-- **📅 Execution Date**: When booking will run
-- **👤 Added By**: Who/what added the booking
-- **🕐 Timestamps**: All status changes
+### 🗑️ Remove Booking(s)
+**Inputs:**
+- `target_date` (optional): Date to remove, or empty for ALL
 
-## 🎉 Why This System is Revolutionary
+**Process:**
+1. If date provided: Remove specific booking
+2. If empty: Remove ALL bookings
+3. Updates YAML with clean formatting
+4. Commits changes
 
-### ❌ Old Problems
-- Manual alarm setting for 18:01
-- Local git operations required
-- One-off booking attempts
-- No status tracking
-- Desktop-only management
+### ⏰ Library Booking Scheduler
+**Automatic Process:**
+1. Runs daily at 18:01 Netherlands time
+2. Checks YAML for bookings due today
+3. Executes library reservations
+4. Removes completed bookings from YAML
+5. Commits updated YAML
 
-### ✅ New Solutions
-- **🌐 Web-based**: Manage from anywhere
-- **📱 Mobile-ready**: Book from your phone
-- **🤖 Automatic**: Perfect timing every time
-- **📊 Tracked**: Full status visibility
-- **🔄 Reliable**: GitHub's infrastructure
-- **📈 Scalable**: Handle unlimited bookings
+## 🎉 Why This System is Perfect
+
+### ❌ Old Complexity
+- JSON configuration with metadata
+- Multiple management workflows
+- Complex status tracking
+- Hard to read/edit manually
+
+### ✅ New Simplicity
+- **📖 YAML** - human readable
+- **🎯 2 workflows** - add & remove
+- **📱 Mobile friendly**
+- **🔗 Bookmarkable** schedule
+- **🧹 Self-maintaining**
+
+## 📋 Quick Reference
+
+### Add Booking
+```
+Actions → "📝 Add New Booking" → Fill form → Run
+```
+
+### View Schedule
+```
+Bookmark: your-repo/blob/main/bookings.yml
+```
+
+### Remove Specific Booking
+```
+Actions → "🗑️ Remove Booking(s)" → Enter date → Run
+```
+
+### Clear All Bookings
+```
+Actions → "🗑️ Remove Booking(s)" → Leave date empty → Run
+```
 
 ## 🚨 Important Notes
 
-- **Timing**: Bookings execute at 18:01 Netherlands time (when slots open at 18:00)
+- **Timing**: Executes at 18:01 Netherlands time (perfect timing)
 - **Advance**: Always books exactly 2 days in advance
-- **Resource**: Defaults to room 565 unless specified
-- **Status**: Auto-updates after execution
-- **History**: All changes tracked in git history
+- **Resource**: Defaults to room 565
+- **Auto-cleanup**: Completed bookings removed automatically
 - **Mobile**: Fully functional on mobile devices
-
-## 🎮 Pro Tips
-
-### Quick Actions
-1. **Bookmark** your repository's Actions page
-2. **Pin workflows** you use frequently
-3. **Use descriptive names** for easy identification
-4. **Check status** via "List Bookings" workflow
-
-### Bulk Operations
-- Use **"Manage All Bookings"** for bulk cleanup
-- **Clear completed** bookings periodically
-- **Disable** bookings instead of removing (easier to re-enable)
-
-### Mobile Optimization
-- **GitHub mobile app** provides best experience
-- **Mobile browser** works perfectly too
-- **Bookmark** Actions page for quick access
+- **Bookmarkable**: YAML file is perfect for browser bookmarks
 
 ---
 
-**🎉 Happy Booking!** You now have the most advanced, hands-off library booking system that works from anywhere, anytime! 🌍📱✨
+**🎉 Happy Booking!** The simplest, most elegant library booking system ever created! 🌟
 
-**Never miss a booking slot again!** 🎯
+**Your `bookings.yml` is now your single source of truth - bookmark it and manage your entire schedule with ease!** 📚✨

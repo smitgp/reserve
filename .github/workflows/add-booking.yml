@@ -23,16 +23,9 @@ on:
         required: false
         type: string
         default: '565'
-      description:
-        description: 'Booking description'
-        required: false
-        type: string
-        default: 'Library work session'
-      replace_existing:
-        description: 'Replace existing booking for this date if it exists'
-        required: false
-        type: boolean
-        default: false
+
+permissions:
+  contents: write
 
 jobs:
   add-booking:
@@ -48,14 +41,16 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: '22'
+        cache: 'npm'
         
-    - name: Validate inputs
+    - name: Install dependencies
+      run: npm ci
+        
+    - name: Validate inputs and calculate timing
       run: |
         echo "🎯 Adding booking for: ${{ github.event.inputs.target_date }}"
         echo "⏰ Time: ${{ github.event.inputs.start_time }} - ${{ github.event.inputs.end_time }}"
         echo "🏢 Resource: ${{ github.event.inputs.resource }}"
-        echo "📝 Description: ${{ github.event.inputs.description }}"
-        echo "🔄 Replace existing: ${{ github.event.inputs.replace_existing }}"
         
         # Validate date format
         if ! date -d "${{ github.event.inputs.target_date }}" >/dev/null 2>&1; then
@@ -66,73 +61,81 @@ jobs:
         # Calculate booking date (2 days before)
         TARGET_DATE="${{ github.event.inputs.target_date }}"
         BOOKING_DATE=$(date -d "$TARGET_DATE - 2 days" +%Y-%m-%d)
-        echo "📅 Will book on: $BOOKING_DATE at 18:01 Netherlands time"
+        echo "📅 Will execute on: $BOOKING_DATE at 18:01 Netherlands time"
         echo "BOOKING_DATE=$BOOKING_DATE" >> $GITHUB_ENV
         
-    - name: Add booking to configuration
+    - name: Add booking to YAML configuration
       run: |
-        # Create booking configuration script
-        cat > add-booking-workflow.mjs << 'EOF'
+        # Create booking addition script
+        cat > add-booking-to-yaml.mjs << 'EOF'
         import fs from 'fs/promises';
+        import YAML from 'yaml';
         
         async function addBooking() {
           const targetDate = process.env.TARGET_DATE;
-          const bookingDate = process.env.BOOKING_DATE;
           const startTime = process.env.START_TIME;
           const endTime = process.env.END_TIME;
           const resource = process.env.RESOURCE;
-          const description = process.env.DESCRIPTION;
-          const replaceExisting = process.env.REPLACE_EXISTING === 'true';
           
-          console.log(`📝 Adding booking: ${targetDate} ${startTime}-${endTime}`);
+          console.log(`📝 Adding booking: ${targetDate} ${startTime}-${endTime} (Resource ${resource})`);
           
           // Load existing configuration
           let config;
           try {
-            const configFile = await fs.readFile('booking-config.json', 'utf8');
-            config = JSON.parse(configFile);
+            const yamlContent = await fs.readFile('bookings.yml', 'utf8');
+            config = YAML.parse(yamlContent);
           } catch (error) {
             console.log('📋 Creating new booking configuration');
             config = { bookings: [] };
           }
           
+          if (!config.bookings) {
+            config.bookings = [];
+          }
+          
           // Check for existing booking
           const existingIndex = config.bookings.findIndex(b => b.targetDate === targetDate);
           if (existingIndex !== -1) {
-            if (!replaceExisting) {
-              console.log(`❌ Booking for ${targetDate} already exists:`);
-              console.log(`   Current: ${config.bookings[existingIndex].start}-${config.bookings[existingIndex].end} (${config.bookings[existingIndex].enabled ? 'enabled' : 'disabled'})`);
-              console.log(`   Use "Replace existing" option to overwrite`);
-              process.exit(1);
-            }
-            console.log(`🔄 Replacing existing booking for ${targetDate}`);
+            console.log(`❌ Booking for ${targetDate} already exists:`);
+            console.log(`   Current: ${config.bookings[existingIndex].start}-${config.bookings[existingIndex].end} (Resource ${config.bookings[existingIndex].resource})`);
+            console.log(`   New: ${startTime}-${endTime} (Resource ${resource})`);
+            console.log(`🔄 Replacing existing booking`);
             config.bookings.splice(existingIndex, 1);
           }
           
           // Create new booking
           const newBooking = {
-            id: `booking-${targetDate}`,
             targetDate: targetDate,
-            bookingDate: bookingDate,
             start: startTime,
             end: endTime,
-            resource: resource,
-            description: description,
-            enabled: true,
-            addedAt: new Date().toISOString(),
-            addedBy: 'github-workflow'
+            resource: resource
           };
           
-          // Add and sort bookings
+          // Add and sort bookings by date
           config.bookings.push(newBooking);
           config.bookings.sort((a, b) => a.targetDate.localeCompare(b.targetDate));
           
-          // Save configuration
-          await fs.writeFile('booking-config.json', JSON.stringify(config, null, 2));
+          // Save configuration with nice formatting
+          const yamlContent = YAML.stringify(config, {
+            lineWidth: 0,
+            minContentWidth: 0,
+            quotingType: '"'
+          });
+          
+          // Add header comment
+          const headerComment = `# Library Booking Schedule
+# Simple YAML configuration for automatic library bookings
+#
+# Each booking will execute 2 days before the target date at 18:01 Netherlands time
+# Example: ${targetDate} booking will execute on ${process.env.BOOKING_DATE} at 18:01
+
+`;
+          
+          await fs.writeFile('bookings.yml', headerComment + yamlContent);
           
           console.log(`✅ Successfully added booking for ${targetDate}`);
-          console.log(`📋 Booking will execute on ${bookingDate} at 18:01 Netherlands time`);
-          console.log(`🎯 Total bookings in queue: ${config.bookings.filter(b => b.enabled).length}`);
+          console.log(`📋 Booking will execute on ${process.env.BOOKING_DATE} at 18:01 Netherlands time`);
+          console.log(`🎯 Total bookings in queue: ${config.bookings.length}`);
         }
         
         addBooking().catch(error => {
@@ -143,19 +146,16 @@ jobs:
         
         # Run the script
         TARGET_DATE="${{ github.event.inputs.target_date }}" \
-        BOOKING_DATE="$BOOKING_DATE" \
         START_TIME="${{ github.event.inputs.start_time }}" \
         END_TIME="${{ github.event.inputs.end_time }}" \
         RESOURCE="${{ github.event.inputs.resource }}" \
-        DESCRIPTION="${{ github.event.inputs.description }}" \
-        REPLACE_EXISTING="${{ github.event.inputs.replace_existing }}" \
-        node add-booking-workflow.mjs
+        node add-booking-to-yaml.mjs
         
     - name: Commit changes
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
-        git add booking-config.json
+        git add bookings.yml
         
         if git diff --staged --quiet; then
           echo "📭 No changes to commit"
@@ -165,23 +165,17 @@ jobs:
           🎯 Target: ${{ github.event.inputs.target_date }}
           ⏰ Time: ${{ github.event.inputs.start_time }} - ${{ github.event.inputs.end_time }}
           🏢 Resource: ${{ github.event.inputs.resource }}
-          📝 Description: ${{ github.event.inputs.description }}
           📅 Will execute: $BOOKING_DATE at 18:01"
           
           git push
           echo "✅ Booking added and committed to repository"
         fi
         
-    - name: Display final status
+    - name: Display booking schedule
       run: |
         echo "🎉 Booking successfully scheduled!"
         echo ""
-        echo "📋 Summary:"
-        echo "   🎯 Target Date: ${{ github.event.inputs.target_date }}"
-        echo "   ⏰ Time Slot: ${{ github.event.inputs.start_time }} - ${{ github.event.inputs.end_time }}"
-        echo "   🏢 Resource: ${{ github.event.inputs.resource }}"
-        echo "   📝 Description: ${{ github.event.inputs.description }}"
-        echo "   📅 Execution: $BOOKING_DATE at 18:01 Netherlands time"
+        echo "📋 Current bookings.yml:"
+        cat bookings.yml
         echo ""
         echo "🤖 The daily scheduler will automatically execute this booking at the optimal time!"
-        echo "📋 To view all bookings, run the 'List Bookings' workflow"

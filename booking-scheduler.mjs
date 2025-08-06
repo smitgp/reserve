@@ -1,15 +1,24 @@
 #!/usr/bin/env node
-// Intelligent Booking Scheduler
-// Checks booking-config.json and executes bookings when their time arrives
+// Intelligent Booking Scheduler for YAML Configuration
+// Checks bookings.yml and executes bookings when their time arrives
 
 import fs from 'fs/promises';
 import { execSync } from 'child_process';
+import YAML from 'yaml';
 
 // Get today's date in Netherlands timezone
 function getTodayNL() {
   const today = new Date();
   const nlTime = new Date(today.toLocaleString("en-US", {timeZone: "Europe/Amsterdam"}));
   return nlTime.toISOString().split('T')[0];
+}
+
+// Calculate booking date (2 days before target date)
+function calculateBookingDate(targetDate) {
+  const target = new Date(targetDate + 'T00:00:00Z');
+  const booking = new Date(target);
+  booking.setDate(booking.getDate() - 2);
+  return booking.toISOString().split('T')[0];
 }
 
 async function main() {
@@ -23,14 +32,20 @@ async function main() {
   
   try {
     // Load booking configuration
-    const configFile = await fs.readFile('booking-config.json', 'utf8');
-    const config = JSON.parse(configFile);
+    const yamlContent = await fs.readFile('bookings.yml', 'utf8');
+    const config = YAML.parse(yamlContent);
+    
+    if (!config.bookings || !Array.isArray(config.bookings)) {
+      console.log(`📭 No bookings found in configuration`);
+      return;
+    }
     
     console.log(`📋 Loaded ${config.bookings.length} booking configurations`);
     
     // Find bookings scheduled for today
     const todaysBookings = config.bookings.filter(booking => {
-      return booking.enabled && booking.bookingDate === today;
+      const bookingDate = calculateBookingDate(booking.targetDate);
+      return bookingDate === today;
     });
     
     if (todaysBookings.length === 0) {
@@ -41,8 +56,7 @@ async function main() {
     console.log(`🎯 Found ${todaysBookings.length} booking(s) to execute today:`);
     
     for (const booking of todaysBookings) {
-      console.log(`\n⭐ Executing: ${booking.description}`);
-      console.log(`   Target Date: ${booking.targetDate}`);
+      console.log(`\n⭐ Executing booking for ${booking.targetDate}`);
       console.log(`   Time: ${booking.start} - ${booking.end}`);
       console.log(`   Resource: ${booking.resource}`);
       
@@ -64,25 +78,27 @@ async function main() {
         console.log(`   ✅ Booking completed successfully`);
         console.log(`   📄 Output: ${output.trim()}`);
         
-        // Mark as completed by disabling it
-        booking.enabled = false;
-        booking.completedAt = new Date().toISOString();
+        // Remove completed booking from YAML
+        const index = config.bookings.indexOf(booking);
+        if (index > -1) {
+          config.bookings.splice(index, 1);
+          console.log(`   🗑️ Removed completed booking from schedule`);
+        }
         
       } catch (error) {
         console.log(`   ❌ Booking failed: ${error.message}`);
-        
-        // Add failure info but keep enabled for retry
-        booking.lastFailure = {
-          at: new Date().toISOString(),
-          error: error.message
-        };
+        // Keep failed bookings in the list for potential retry
       }
     }
     
-    // Save updated configuration
+    // Save updated configuration (removes completed bookings)
     if (!dryRun) {
-      await fs.writeFile('booking-config.json', JSON.stringify(config, null, 2));
-      console.log(`\n💾 Updated booking configuration`);
+      const updatedYaml = YAML.stringify(config, {
+        lineWidth: 0,
+        minContentWidth: 0
+      });
+      await fs.writeFile('bookings.yml', updatedYaml);
+      console.log(`\n💾 Updated bookings.yml`);
     }
     
   } catch (error) {

@@ -17,6 +17,9 @@ on:
         type: boolean
         default: false
 
+permissions:
+  contents: write
+
 jobs:
   check-and-book:
     runs-on: ubuntu-latest
@@ -64,7 +67,7 @@ jobs:
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action - Scheduler"
-        git add booking-config.json
+        git add bookings.yml
         
         if git diff --staged --quiet; then
           echo "📭 No booking status changes to commit"

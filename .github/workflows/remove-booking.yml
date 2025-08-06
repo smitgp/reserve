@@ -1,25 +1,19 @@
-name: 🗑️ Remove Booking
+name: 🗑️ Remove Booking(s)
 
 on:
   workflow_dispatch:
     inputs:
       target_date:
-        description: 'Date of booking to remove (YYYY-MM-DD)'
-        required: true
+        description: 'Date of booking to remove (YYYY-MM-DD). Leave empty to remove ALL bookings.'
+        required: false
         type: string
-        default: '2025-12-15'
-      action_type:
-        description: 'Action to perform'
-        required: true
-        type: choice
-        options:
-          - 'remove'
-          - 'disable'
-          - 'enable'
-        default: 'remove'
+        default: ''
+
+permissions:
+  contents: write
 
 jobs:
-  manage-booking:
+  remove-bookings:
     runs-on: ubuntu-latest
     
     steps:
@@ -32,105 +26,135 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: '22'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
         
     - name: Validate inputs
       run: |
-        echo "🎯 Target Date: ${{ github.event.inputs.target_date }}"
-        echo "🔧 Action: ${{ github.event.inputs.action_type }}"
+        TARGET_DATE="${{ github.event.inputs.target_date }}"
         
-        # Validate date format
-        if ! date -d "${{ github.event.inputs.target_date }}" >/dev/null 2>&1; then
-          echo "❌ Invalid date format. Use YYYY-MM-DD"
-          exit 1
+        if [ -z "$TARGET_DATE" ]; then
+          echo "🗑️ REMOVE ALL BOOKINGS MODE"
+          echo "⚠️ This will remove ALL bookings from the schedule"
+        else
+          echo "🎯 Target Date: $TARGET_DATE"
+          
+          # Validate date format
+          if ! date -d "$TARGET_DATE" >/dev/null 2>&1; then
+            echo "❌ Invalid date format. Use YYYY-MM-DD"
+            exit 1
+          fi
         fi
         
-    - name: Perform booking action
+    - name: Remove booking(s) from YAML
       run: |
-        # Create booking management script
-        cat > manage-booking-workflow.mjs << 'EOF'
+        # Create booking removal script
+        cat > remove-bookings-from-yaml.mjs << 'EOF'
         import fs from 'fs/promises';
+        import YAML from 'yaml';
         
-        async function manageBooking() {
+        async function removeBookings() {
           const targetDate = process.env.TARGET_DATE;
-          const actionType = process.env.ACTION_TYPE;
-          
-          console.log(`🔧 ${actionType.toUpperCase()} booking for: ${targetDate}`);
+          const removeAll = !targetDate || targetDate.trim() === '';
           
           try {
             // Load existing configuration
-            const configFile = await fs.readFile('booking-config.json', 'utf8');
-            const config = JSON.parse(configFile);
+            const yamlContent = await fs.readFile('bookings.yml', 'utf8');
+            const config = YAML.parse(yamlContent);
             
-            // Find the booking
-            const bookingIndex = config.bookings.findIndex(b => b.targetDate === targetDate);
-            if (bookingIndex === -1) {
-              console.log(`❌ No booking found for ${targetDate}`);
-              console.log('📋 Available bookings:');
-              config.bookings.forEach(b => {
-                console.log(`   • ${b.targetDate}: ${b.description} (${b.enabled ? 'enabled' : 'disabled'})`);
-              });
-              process.exit(1);
+            if (!config.bookings || !Array.isArray(config.bookings)) {
+              console.log(`📭 No bookings found in configuration`);
+              return;
             }
             
-            const booking = config.bookings[bookingIndex];
-            console.log(`📝 Found booking: ${booking.description}`);
-            console.log(`   ⏰ Time: ${booking.start} - ${booking.end}`);
-            console.log(`   🏢 Resource: ${booking.resource}`);
-            console.log(`   📅 Would execute: ${booking.bookingDate} at 18:01`);
-            console.log(`   🔧 Current status: ${booking.enabled ? 'enabled' : 'disabled'}`);
+            const initialCount = config.bookings.length;
+            console.log(`📋 Found ${initialCount} existing booking(s)`);
             
-            let changed = false;
-            let commitMessage = '';
-            
-            if (actionType === 'remove') {
-              config.bookings.splice(bookingIndex, 1);
-              changed = true;
-              commitMessage = `🗑️ Remove booking: ${targetDate}`;
-              console.log(`✅ Booking for ${targetDate} has been removed`);
+            if (removeAll) {
+              console.log(`🗑️ REMOVING ALL BOOKINGS`);
               
-            } else if (actionType === 'disable') {
-              if (booking.enabled) {
-                booking.enabled = false;
-                booking.disabledAt = new Date().toISOString();
-                changed = true;
-                commitMessage = `🔴 Disable booking: ${targetDate}`;
-                console.log(`🔴 Booking for ${targetDate} has been disabled`);
-              } else {
-                console.log(`ℹ️ Booking for ${targetDate} was already disabled`);
+              // Show what will be removed
+              if (config.bookings.length > 0) {
+                console.log(`\n📋 Removing the following bookings:`);
+                config.bookings.forEach((booking, index) => {
+                  console.log(`   ${index + 1}. ${booking.targetDate} ${booking.start}-${booking.end} (Resource ${booking.resource})`);
+                });
               }
               
-            } else if (actionType === 'enable') {
-              if (!booking.enabled) {
-                booking.enabled = true;
-                delete booking.disabledAt;
-                delete booking.completedAt; // Allow re-execution
-                changed = true;
-                commitMessage = `🟢 Enable booking: ${targetDate}`;
-                console.log(`🟢 Booking for ${targetDate} has been enabled`);
-              } else {
-                console.log(`ℹ️ Booking for ${targetDate} was already enabled`);
-              }
-            }
-            
-            if (changed) {
-              // Save configuration
-              await fs.writeFile('booking-config.json', JSON.stringify(config, null, 2));
-              console.log(`💾 Configuration updated`);
+              // Clear all bookings
+              config.bookings = [];
               
-              // Set environment variable for commit
-              const fs_sync = await import('fs');
-              fs_sync.appendFileSync(process.env.GITHUB_ENV, `COMMIT_MESSAGE=${commitMessage}\n`);
-              fs_sync.appendFileSync(process.env.GITHUB_ENV, `CHANGES_MADE=true\n`);
+              console.log(`\n✅ Removed all ${initialCount} booking(s)`);
+              
             } else {
-              const fs_sync = await import('fs');
-              fs_sync.appendFileSync(process.env.GITHUB_ENV, `CHANGES_MADE=false\n`);
+              console.log(`🎯 Removing booking for: ${targetDate}`);
+              
+              // Find and remove specific booking
+              const bookingIndex = config.bookings.findIndex(b => b.targetDate === targetDate);
+              if (bookingIndex === -1) {
+                console.log(`❌ No booking found for ${targetDate}`);
+                console.log('📋 Available bookings:');
+                config.bookings.forEach((booking, index) => {
+                  console.log(`   ${index + 1}. ${booking.targetDate} ${booking.start}-${booking.end} (Resource ${booking.resource})`);
+                });
+                process.exit(1);
+              }
+              
+              const removedBooking = config.bookings[bookingIndex];
+              console.log(`📝 Found booking: ${removedBooking.targetDate} ${removedBooking.start}-${removedBooking.end} (Resource ${removedBooking.resource})`);
+              
+              config.bookings.splice(bookingIndex, 1);
+              console.log(`✅ Removed booking for ${targetDate}`);
             }
+            
+            // Save updated configuration
+            let yamlContent;
+            if (config.bookings.length === 0) {
+              yamlContent = `# Library Booking Schedule
+# Simple YAML configuration for automatic library bookings
+#
+# Each booking will execute 2 days before the target date at 18:01 Netherlands time
+# Add bookings using the "Add New Booking" workflow
+
+bookings: []
+`;
+            } else {
+              const yamlData = YAML.stringify(config, {
+                lineWidth: 0,
+                minContentWidth: 0,
+                quotingType: '"'
+              });
+              
+              yamlContent = `# Library Booking Schedule
+# Simple YAML configuration for automatic library bookings
+#
+# Each booking will execute 2 days before the target date at 18:01 Netherlands time
+
+${yamlData}`;
+            }
+            
+            await fs.writeFile('bookings.yml', yamlContent);
+            console.log(`💾 Updated bookings.yml`);
             
             // Show final stats
-            const activeBookings = config.bookings.filter(b => b.enabled && !b.completedAt).length;
-            console.log(`\n📊 Current booking status:`);
-            console.log(`   🟢 Active bookings: ${activeBookings}`);
-            console.log(`   📊 Total bookings: ${config.bookings.length}`);
+            console.log(`\n📊 Final booking count: ${config.bookings.length}`);
+            if (config.bookings.length > 0) {
+              console.log(`📋 Remaining bookings:`);
+              config.bookings.forEach((booking, index) => {
+                console.log(`   ${index + 1}. ${booking.targetDate} ${booking.start}-${booking.end} (Resource ${booking.resource})`);
+              });
+            }
+            
+            // Set environment variable for commit message
+            const fs_sync = await import('fs');
+            if (removeAll) {
+              fs_sync.appendFileSync(process.env.GITHUB_ENV, `COMMIT_MESSAGE=🗑️ Remove all bookings (${initialCount} removed)\n`);
+            } else {
+              fs_sync.appendFileSync(process.env.GITHUB_ENV, `COMMIT_MESSAGE=🗑️ Remove booking: ${targetDate}\n`);
+            }
+            fs_sync.appendFileSync(process.env.GITHUB_ENV, `CHANGES_MADE=true\n`);
             
           } catch (error) {
             console.error(`❌ Error: ${error.message}`);
@@ -138,48 +162,38 @@ jobs:
           }
         }
         
-        manageBooking().catch(error => {
+        removeBookings().catch(error => {
           console.error(`❌ Fatal error: ${error.message}`);
           process.exit(1);
         });
         EOF
         
         # Run the script
-        TARGET_DATE="${{ github.event.inputs.target_date }}" \
-        ACTION_TYPE="${{ github.event.inputs.action_type }}" \
-        node manage-booking-workflow.mjs
+        TARGET_DATE="${{ github.event.inputs.target_date }}" node remove-bookings-from-yaml.mjs
         
     - name: Commit changes
-      if: env.CHANGES_MADE == 'true'
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
-        git add booking-config.json
+        git add bookings.yml
         
         if git diff --staged --quiet; then
           echo "📭 No changes to commit"
         else
           git commit -m "$COMMIT_MESSAGE
 
-          📅 Date: ${{ github.event.inputs.target_date }}
-          🔧 Action: ${{ github.event.inputs.action_type }}
-          🤖 Via: GitHub Workflow"
+          📅 Date: ${{ github.event.inputs.target_date || 'ALL' }}
+          🤖 Via: Remove Booking Workflow"
           
           git push
           echo "✅ Changes committed to repository"
         fi
         
-    - name: Display final status
+    - name: Display final schedule
       run: |
-        if [ "$CHANGES_MADE" = "true" ]; then
-          echo "🎉 Operation completed successfully!"
-          echo ""
-          echo "📋 Summary:"
-          echo "   📅 Date: ${{ github.event.inputs.target_date }}"
-          echo "   🔧 Action: ${{ github.event.inputs.action_type }}"
-          echo "   ✅ Status: Updated"
-        else
-          echo "ℹ️ No changes were needed"
-        fi
+        echo "🎉 Operation completed successfully!"
         echo ""
-        echo "📋 To view all current bookings, run the 'List Bookings' workflow"
+        echo "📋 Current bookings.yml:"
+        cat bookings.yml
+        echo ""
+        echo "💡 To add new bookings, use the 'Add New Booking' workflow"
