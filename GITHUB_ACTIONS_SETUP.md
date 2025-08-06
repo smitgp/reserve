@@ -37,63 +37,46 @@ Add these **Repository Secrets**:
 
 ### 3. **Test Manual Run**
 1. Go to **Actions** tab in your GitHub repo
-2. Click **"Library Reservation"** workflow
+2. Click **"Scheduled Library Reservation"** workflow
 3. Click **"Run workflow"**
-4. Enter your test parameters:
-   - Date: `2025-08-07` (tomorrow - always use today/tomorrow!)
+4. Enter your test parameters (all optional):
+   - Email: `your.email@gmail.com` (leave empty to use default)
+   - Date: `2025-08-07` (leave empty for automatic day-after-tomorrow)
    - Start: `15:00`
    - End: `16:00`
    - Resource: `175` (170-180 range good for testing)
 5. Click **"Run workflow"**
 
-## 📅 **Reservation Methods**
+## 📅 **Reservation Method**
 
-### **Manual Reservation (Primary Method)**
-- **Workflow**: `manual-reservation.yml` 
-- **Trigger**: Manual button click in GitHub Actions
-- **What it does**: Books your specified date/time/resource
-- **Perfect for**: All your reservation needs with laptop off
-
-### **Commit-Based Reservations (Alternative)**
-- **File**: `reservations.json`
-- **Method**: Commit reservation requests to trigger automated booking
-- **What it does**: Processes pending reservations from the config file
-- **Perfect for**: Planning multiple reservations in advance
+### **Smart Scheduled Reservation (Primary Method)**
+- **Workflow**: `scheduled-reservation.yml` 
+- **Schedule**: Runs daily at 18:01 Netherlands time
+- **What it does**: Books day-after-tomorrow automatically when booking window opens
+- **Manual trigger**: Can also be triggered manually with custom parameters
+- **Perfect for**: Automated daily bookings with laptop off
 
 ## 💡 **Usage Examples**
 
-### **Method 1: GitHub Actions UI (Recommended)**
-1. Go to Actions → Library Reservation
-2. Click "Run workflow"
-3. Enter your parameters:
+### **Automatic Mode (Set and Forget)**
+- Runs daily at 18:01 Netherlands time
+- Books day-after-tomorrow automatically  
+- Uses default settings (10:00-17:00, Resource 565)
+- No manual intervention needed
+
+### **Manual Override (When Needed)**
+1. Go to Actions → "Scheduled Library Reservation"
+2. Click "Run workflow" 
+3. Customize parameters:
    ```
-   Date: 2025-08-07
-   Start: 15:00
-   End: 16:00  
-   Resource: 175
+   Email: different.email@gmail.com    (optional)
+   Date: 2025-08-09                   (optional - leave empty for auto)
+   Start: 09:00                       (optional)
+   End: 13:00                         (optional)
+   Resource: 175                      (optional)
    ```
 4. Click "Run workflow"
 5. Check results in workflow logs
-
-### **Method 2: Commit Configuration File**
-1. Edit `reservations.json` to add your request:
-   ```json
-   {
-     "pending_reservations": [
-       {
-         "id": "my_reservation_1",
-         "date": "2025-08-07",
-         "start_time": "15:00", 
-         "end_time": "16:00",
-         "resource": "175",
-         "description": "Study session",
-         "status": "pending"
-       }
-     ]
-   }
-   ```
-2. Commit and push the file
-3. Manually trigger the workflow to process pending reservations
 
 ## ⚠️ **Booking Window Guidelines**
 

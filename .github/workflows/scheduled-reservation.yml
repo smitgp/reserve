@@ -1,22 +1,21 @@
-name: Scheduled Library Reservation
+name: Library Reservation
 
 on:
-  # Schedule: Run every day at 17:01 UTC (18:01/19:01 Netherlands time)
-  # This books day-after-tomorrow when the booking window opens
-  schedule:
-    - cron: '1 17 * * *'
-  
-  # Keep manual trigger option for testing
+  # Manual trigger only - run when you need it
   workflow_dispatch:
     inputs:
+      email:
+        description: 'Email address to use for booking (leave empty to use default from secrets)'
+        required: false
+        type: string
       date:
         description: 'Target date (YYYY-MM-DD) - leave empty for tomorrow'
         required: false
         type: string
       start_time:
-        description: 'Start time (HH:MM)'
+        description: 'Start time (HH:MM) - use 09:00 format'
         required: false
-        default: '10:00'
+        default: '09:00'
         type: string
       end_time:
         description: 'End time (HH:MM)'
@@ -46,19 +45,33 @@ jobs:
     - name: Install dependencies
       run: npm ci
       
+    - name: Set email parameter
+      id: email
+      run: |
+        if [ -n "${{ github.event.inputs.email }}" ]; then
+          EMAIL="${{ github.event.inputs.email }}"
+          BASE_EMAIL="${{ github.event.inputs.email }}"
+        else
+          EMAIL="${{ secrets.EMAIL }}"
+          BASE_EMAIL="${{ secrets.BASE_EMAIL }}"
+        fi
+        echo "email=$EMAIL" >> $GITHUB_OUTPUT
+        echo "base_email=$BASE_EMAIL" >> $GITHUB_OUTPUT
+        echo "📧 Using email: $EMAIL"
+        
     - name: Create .env file
       env:
-        EMAIL: ${{ secrets.EMAIL }}
+        EMAIL: ${{ steps.email.outputs.email }}
         LOCATION: ${{ secrets.LOCATION }}
         TYPE: ${{ secrets.TYPE }}
-        BASE_EMAIL: ${{ secrets.BASE_EMAIL }}
+        BASE_EMAIL: ${{ steps.email.outputs.base_email }}
         ENGINE_BODY: ${{ secrets.ENGINE_BODY }}
       run: |
         cat > .env << EOF
-        EMAIL=${{ secrets.EMAIL }}
+        EMAIL=${{ steps.email.outputs.email }}
         LOCATION=${{ secrets.LOCATION }}
         TYPE=${{ secrets.TYPE }}
-        BASE_EMAIL=${{ secrets.BASE_EMAIL }}
+        BASE_EMAIL=${{ steps.email.outputs.base_email }}
         ENGINE_BODY=${{ secrets.ENGINE_BODY }}
         EOF
         
@@ -73,7 +86,7 @@ jobs:
           TARGET_DATE=$(date -d '+2 days' '+%Y-%m-%d')
         fi
         echo "target_date=$TARGET_DATE" >> $GITHUB_OUTPUT
-        echo "🎯 Target date: $TARGET_DATE (booking 2 days ahead at optimal time)"
+        echo "🎯 Target date: $TARGET_DATE"
         
     - name: Set booking parameters
       id: params
@@ -98,9 +111,7 @@ jobs:
         END_TIME: ${{ steps.params.outputs.end_time }}
         RESOURCE: ${{ steps.params.outputs.resource }}
       run: |
-        echo "🎯 Strategic booking: Running at 18:01 to reserve $TARGET_DATE"
-        echo "📅 Booking $TARGET_DATE from $START_TIME to $END_TIME on Resource $RESOURCE"
-        echo "⏰ Optimal timing: Booking 2 days ahead when window opens"
+        echo "🎯 Manual booking for $TARGET_DATE from $START_TIME to $END_TIME on Resource $RESOURCE"
         node reserve.mjs --date "$TARGET_DATE" --start "$START_TIME" --end "$END_TIME" --resource "$RESOURCE"
         
     - name: Upload logs (if any failures)
