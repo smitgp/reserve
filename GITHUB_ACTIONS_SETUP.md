@@ -1,8 +1,17 @@
 # GitHub Actions Setup Guide
 
-## 🚀 **Automated Daily Reservations**
+## 🚀 **Automated Library Reservations**
 
-Your repository now has GitHub Actions workflows that can run your reservation script automatically while your laptop is off!
+Your repository now has a GitHub Actions workflow that can run your reservation script automatically while your laptop is off!
+
+## ⚠️ **Important: Booking Window Restrictions**
+
+**CRITICAL**: The library booking system only allows reservations for:
+- ✅ **Today** (current date)
+- ✅ **Tomorrow** (next day) 
+- ✅ **Day after tomorrow** (available in the evening, timing varies)
+
+❌ **You CANNOT book dates beyond this window!** Always use dates within 1-2 days of today.
 
 ## 📋 **Setup Steps**
 
@@ -28,70 +37,80 @@ Add these **Repository Secrets**:
 
 ### 3. **Test Manual Run**
 1. Go to **Actions** tab in your GitHub repo
-2. Click **"Manual Reservation"** workflow
+2. Click **"Library Reservation"** workflow
 3. Click **"Run workflow"**
 4. Enter your test parameters:
-   - Date: `2025-08-07`
-   - Start: `10:00`
-   - End: `13:00`
-   - Resource: `565`
+   - Date: `2025-08-07` (tomorrow - always use today/tomorrow!)
+   - Start: `15:00`
+   - End: `16:00`
+   - Resource: `175` (170-180 range good for testing)
 5. Click **"Run workflow"**
 
-## ⏰ **Automated Schedules**
+## 📅 **Reservation Methods**
 
-### **Daily Reservation (6 AM UTC)**
-- **Workflow**: `daily-reservation.yml`
-- **Schedule**: Every day at 6:00 AM UTC
-- **What it does**: Books tomorrow's slots (09:00-18:00 on Resource 565)
-- **Customizable**: Edit the workflow file to change times/resource
+### **Manual Reservation (Primary Method)**
+- **Workflow**: `manual-reservation.yml` 
+- **Trigger**: Manual button click in GitHub Actions
+- **What it does**: Books your specified date/time/resource
+- **Perfect for**: All your reservation needs with laptop off
 
-### **Manual Reservation (On-Demand)**
-- **Workflow**: `manual-reservation.yml`
-- **Trigger**: Manual button click
-- **What it does**: Books any date/time you specify
-- **Perfect for**: One-off bookings or testing
+### **Commit-Based Reservations (Alternative)**
+- **File**: `reservations.json`
+- **Method**: Commit reservation requests to trigger automated booking
+- **What it does**: Processes pending reservations from the config file
+- **Perfect for**: Planning multiple reservations in advance
 
-## 🌍 **Timezone Configuration**
+## 💡 **Usage Examples**
 
-The default schedule is `6:00 AM UTC`. To adjust for your timezone:
+### **Method 1: GitHub Actions UI (Recommended)**
+1. Go to Actions → Library Reservation
+2. Click "Run workflow"
+3. Enter your parameters:
+   ```
+   Date: 2025-08-07
+   Start: 15:00
+   End: 16:00  
+   Resource: 175
+   ```
+4. Click "Run workflow"
+5. Check results in workflow logs
 
-**Netherlands (UTC+1/+2):**
-```yaml
-# 5 AM UTC = 6 AM CET / 7 AM CEST
-- cron: '0 5 * * *'
-```
+### **Method 2: Commit Configuration File**
+1. Edit `reservations.json` to add your request:
+   ```json
+   {
+     "pending_reservations": [
+       {
+         "id": "my_reservation_1",
+         "date": "2025-08-07",
+         "start_time": "15:00", 
+         "end_time": "16:00",
+         "resource": "175",
+         "description": "Study session",
+         "status": "pending"
+       }
+     ]
+   }
+   ```
+2. Commit and push the file
+3. Manually trigger the workflow to process pending reservations
 
-**Common schedules:**
-- `'0 6 * * *'` - Daily at 6 AM UTC
-- `'0 6 * * 1-5'` - Weekdays only at 6 AM UTC
-- `'0 6,12,18 * * *'` - Three times daily (6 AM, 12 PM, 6 PM UTC)
+## ⚠️ **Booking Window Guidelines**
 
-## 🎯 **Usage Examples**
+### **Timing Strategy**
+- **Morning (before 10 AM)**: Book today + tomorrow
+- **Evening (after 6 PM)**: Tomorrow + day after tomorrow become available
+- **Always check**: Use today's date or tomorrow's date in your requests
 
-### **Daily Automation**
-- Automatically books Resource 565 for 09:00-18:00 tomorrow
-- Runs every day at 6 AM UTC
-- No manual intervention needed
+### **Resource Strategy** 
+- **Resources 565-570**: Most popular, book early
+- **Resources 170-180**: Good for testing, less crowded
+- **Multiple resources**: Try different resources if preferred one is full
 
-### **Manual Booking**
-1. Go to Actions → Manual Reservation
-2. Specify date, times, resource
-3. Click run
-4. Check results in workflow logs
-
-### **Modify Daily Schedule**
-Edit `.github/workflows/daily-reservation.yml`:
-```yaml
-# Change default resource
-RESOURCE: ${{ github.event.inputs.resource || '566' }}
-
-# Change default times  
-START_TIME: ${{ github.event.inputs.start_time || '08:00' }}
-END_TIME: ${{ github.event.inputs.end_time || '17:00' }}
-
-# Change schedule (runs at 5 AM UTC instead)
-- cron: '0 5 * * *'
-```
+### **Time Slot Strategy**
+- **Peak hours**: 09:00-17:00 (book early)
+- **Off-peak**: Early morning/evening slots more available
+- **Duration**: Script handles 1-hour minimum, can book multiple hours
 
 ## 📊 **Monitoring Results**
 
@@ -113,25 +132,24 @@ END_TIME: ${{ github.event.inputs.end_time || '17:00' }}
 
 ## 💡 **Pro Tips**
 
-### **Multiple Resource Strategy**
-Create separate workflows for different resources:
-```bash
-cp .github/workflows/daily-reservation.yml .github/workflows/daily-resource-566.yml
-# Edit the new file to use resource 566
-```
+### **Plan Ahead**
+- **Add to reservations.json**: Queue up multiple reservations
+- **Set reminders**: Library booking windows are strict
+- **Backup resources**: Always have alternative resource IDs ready
 
-### **Backup Strategy**
-```yaml
-# Run multiple times per day
-- cron: '0 6,12,18 * * *'
-```
+### **Troubleshooting Quick Wins**
+- **Wrong date error**: Use tomorrow's date (today + 1 day)
+- **No slots available**: Try different resource (170-180 range)
+- **Form errors**: Check that secrets are properly configured
 
-### **Weekend vs Weekday**
-```yaml
-# Weekdays: full day
-- cron: '0 6 * * 1-5'
-# Weekends: shorter hours  
-- cron: '0 8 * * 6,7'
+### **Batch Reservations**
+```json
+{
+  "pending_reservations": [
+    {"date": "2025-08-07", "start_time": "09:00", "end_time": "12:00", "resource": "175"},
+    {"date": "2025-08-07", "start_time": "13:00", "end_time": "16:00", "resource": "176"}
+  ]
+}
 ```
 
 ## 🔒 **Security Notes**

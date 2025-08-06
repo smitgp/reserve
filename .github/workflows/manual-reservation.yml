@@ -1,26 +1,26 @@
-name: Manual Reservation
+name: Library Reservation
 
 on:
   workflow_dispatch:
     inputs:
       date:
-        description: 'Target date (YYYY-MM-DD)'
+        description: 'Target date (YYYY-MM-DD) - Only today/tomorrow available'
         required: true
         type: string
       start_time:
         description: 'Start time (HH:MM)'
         required: true
-        default: '09:00'
+        default: '10:00'
         type: string
       end_time:
         description: 'End time (HH:MM)'
         required: true
-        default: '18:00'
+        default: '17:00'
         type: string
       resource:
-        description: 'Resource ID'
+        description: 'Resource ID (170-180 recommended for testing)'
         required: true
-        default: '565'
+        default: '175'
         type: string
 
 jobs:
@@ -58,14 +58,14 @@ jobs:
         
     - name: Make reservation
       run: |
-        echo "🎯 Manual reservation for ${{ github.event.inputs.date }} from ${{ github.event.inputs.start_time }} to ${{ github.event.inputs.end_time }} on Resource ${{ github.event.inputs.resource }}"
+        echo "🎯 Library reservation for ${{ github.event.inputs.date }} from ${{ github.event.inputs.start_time }} to ${{ github.event.inputs.end_time }} on Resource ${{ github.event.inputs.resource }}"
         node reserve.mjs --date "${{ github.event.inputs.date }}" --start "${{ github.event.inputs.start_time }}" --end "${{ github.event.inputs.end_time }}" --resource "${{ github.event.inputs.resource }}"
         
     - name: Upload logs (if any failures)
       if: failure()
       uses: actions/upload-artifact@v4
       with:
-        name: manual-reservation-logs-${{ github.event.inputs.date }}
+        name: reservation-logs-${{ github.event.inputs.date }}
         path: |
           *.log
           debug_*.html

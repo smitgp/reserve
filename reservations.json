@@ -1,0 +1,28 @@
+{
+  "pending_reservations": [
+    {
+      "id": "example_1",
+      "date": "2025-08-07",
+      "start_time": "15:00",
+      "end_time": "16:00",
+      "resource": "175",
+      "description": "Example 1-hour test reservation",
+      "status": "pending",
+      "created_at": "2025-01-06T20:00:00Z"
+    }
+  ],
+  "completed_reservations": [
+    {
+      "id": "test_booking_175",
+      "date": "2025-08-07", 
+      "start_time": "15:00",
+      "end_time": "16:00",
+      "resource": "175",
+      "description": "Successful test booking",
+      "status": "completed",
+      "created_at": "2025-01-06T19:45:00Z",
+      "booked_at": "2025-01-06T19:50:00Z",
+      "email_used": "g.smit92+dqm890@gmail.com"
+    }
+  ]
+}
