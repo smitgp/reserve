@@ -2,8 +2,11 @@ name: Library Booking Scheduler
 
 on:
   schedule:
-    # Check every day at 18:01 Netherlands time (17:01 UTC)
-    - cron: '1 17 * * *'
+    # 18:01 Netherlands time (CEST summer: UTC+2, CET winter: UTC+1)
+    - cron: '1 16 * * *'  # 18:01 CEST (March-October)
+    - cron: '1 17 * * *'  # 18:01 CET (October-March) & 19:01 CEST (March-October)
+    # 19:01 Netherlands time (CEST summer: UTC+2, CET winter: UTC+1)
+    - cron: '1 18 * * *'  # 19:01 CET (October-March)
   
   workflow_dispatch:
     inputs:
