@@ -1,8 +1,4 @@
 bookings:
-  - targetDate: 2025-08-21
-    start: 09:00
-    end: 17:00
-    resource: "565"
   - targetDate: 2025-08-22
     start: 09:00
     end: 17:00
