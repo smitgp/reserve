@@ -1,4 +1,14 @@
+# Library Booking Schedule
+# Simple YAML configuration for automatic library bookings
+#
+# Each booking will execute 2 days before the target date at 18:01 Netherlands time
+# Example: 2025-08-29 booking will execute on 2025-08-27 at 18:01
+
 bookings:
+  - targetDate: 2025-08-29
+    start: 09:00
+    end: 17:00
+    resource: "565"
   - targetDate: 2025-12-15
     start: 09:00
     end: 17:00
