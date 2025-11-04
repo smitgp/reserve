@@ -7,6 +7,18 @@ on:
     - cron: '1 17 * * *'  # 18:01 CET (October-March) & 19:01 CEST (March-October)
     # 19:01 Netherlands time (CEST summer: UTC+2, CET winter: UTC+1)
     - cron: '1 18 * * *'  # 19:01 CET (October-March)
+    # Additional frequent attempts around critical booking times
+    - cron: '*/5 16 * * *'  # Every 5 minutes during 16:xx UTC (potential booking hour)
+    - cron: '*/5 17 * * *'  # Every 5 minutes during 17:xx UTC (potential booking hour)
+    - cron: '*/5 18 * * *'  # Every 5 minutes during 18:xx UTC (potential booking hour)
+  
+  # Trigger immediate booking attempt when changes are pushed
+  push:
+    branches: [ main ]
+    paths:
+      - 'bookings.yml'
+      - 'booking-scheduler.mjs'
+      - '.github/workflows/booking-scheduler.yml'
   
   workflow_dispatch:
     inputs:

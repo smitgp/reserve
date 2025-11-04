@@ -65,29 +65,46 @@ async function main() {
         continue;
       }
       
-      try {
-        // Execute the booking
-        const command = `node reserve.mjs --date "${booking.targetDate}" --start "${booking.start}" --end "${booking.end}" --resource "${booking.resource}"`;
-        console.log(`   🚀 Executing: ${command}`);
-        
-        const output = execSync(command, { 
-          encoding: 'utf8',
-          stdio: 'pipe'
-        });
-        
-        console.log(`   ✅ Booking completed successfully`);
-        console.log(`   📄 Output: ${output.trim()}`);
-        
-        // Remove completed booking from YAML
-        const index = config.bookings.indexOf(booking);
-        if (index > -1) {
-          config.bookings.splice(index, 1);
-          console.log(`   🗑️ Removed completed booking from schedule`);
+      // Multiple attempt strategy for critical bookings
+      const maxAttempts = 3;
+      const delayBetweenAttempts = 10000; // 10 seconds
+      let success = false;
+      
+      for (let attempt = 1; attempt <= maxAttempts && !success; attempt++) {
+        try {
+          console.log(`   🚀 Attempt ${attempt}/${maxAttempts}`);
+          
+          // Execute the booking
+          const command = `node reserve.mjs --date "${booking.targetDate}" --start "${booking.start}" --end "${booking.end}" --resource "${booking.resource}"`;
+          console.log(`   📞 Executing: ${command}`);
+          
+          const output = execSync(command, { 
+            encoding: 'utf8',
+            stdio: 'pipe'
+          });
+          
+          console.log(`   ✅ Booking completed successfully on attempt ${attempt}`);
+          console.log(`   📄 Output: ${output.trim()}`);
+          
+          // Remove completed booking from YAML
+          const index = config.bookings.indexOf(booking);
+          if (index > -1) {
+            config.bookings.splice(index, 1);
+            console.log(`   🗑️ Removed completed booking from schedule`);
+          }
+          
+          success = true;
+          
+        } catch (error) {
+          console.log(`   ❌ Attempt ${attempt} failed: ${error.message}`);
+          
+          if (attempt < maxAttempts) {
+            console.log(`   ⏳ Waiting ${delayBetweenAttempts/1000}s before retry...`);
+            await new Promise(resolve => setTimeout(resolve, delayBetweenAttempts));
+          } else {
+            console.log(`   💥 All ${maxAttempts} attempts failed - keeping booking for next run`);
+          }
         }
-        
-      } catch (error) {
-        console.log(`   ❌ Booking failed: ${error.message}`);
-        // Keep failed bookings in the list for potential retry
       }
     }
     
