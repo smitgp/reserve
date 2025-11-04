@@ -2,15 +2,17 @@ name: Library Booking Scheduler
 
 on:
   schedule:
-    # 18:01 Netherlands time (CEST summer: UTC+2, CET winter: UTC+1)
-    - cron: '1 16 * * *'  # 18:01 CEST (March-October)
-    - cron: '1 17 * * *'  # 18:01 CET (October-March) & 19:01 CEST (March-October)
-    # 19:01 Netherlands time (CEST summer: UTC+2, CET winter: UTC+1)
-    - cron: '1 18 * * *'  # 19:01 CET (October-March)
-    # Additional frequent attempts around critical booking times
-    - cron: '*/5 16 * * *'  # Every 5 minutes during 16:xx UTC (potential booking hour)
-    - cron: '*/5 17 * * *'  # Every 5 minutes during 17:xx UTC (potential booking hour)
-    - cron: '*/5 18 * * *'  # Every 5 minutes during 18:xx UTC (potential booking hour)
+    # Start early to account for GitHub Actions delay (slots open at 19:00 Netherlands time)
+    # Scheduled at 18:55 to account for ~3-5 minute delay, should hit around 19:00
+    - cron: '55 16 * * *'  # 18:55 CEST (summer: UTC+2) - will retry every 10s for 3 minutes
+    - cron: '55 17 * * *'  # 18:55 CET (winter: UTC+1) - will retry every 10s for 3 minutes
+    # Backup schedules every minute during critical window
+    - cron: '0 17 * * *'  # 19:00 CEST (summer)
+    - cron: '0 18 * * *'  # 19:00 CET (winter)
+    - cron: '1 17 * * *'  # 19:01 CEST (summer)
+    - cron: '1 18 * * *'  # 19:01 CET (winter)
+    - cron: '2 17 * * *'  # 19:02 CEST (summer)
+    - cron: '2 18 * * *'  # 19:02 CET (winter)
   
   # Trigger immediate booking attempt when changes are pushed
   push:

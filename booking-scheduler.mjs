@@ -13,12 +13,44 @@ function getTodayNL() {
   return nlTime.toISOString().split('T')[0];
 }
 
-// Calculate booking date (2 days before target date)
-function calculateBookingDate(targetDate) {
+// Get current Netherlands time
+function getCurrentNLTime() {
+  const now = new Date();
+  const nlTimeString = now.toLocaleString("en-US", {timeZone: "Europe/Amsterdam"});
+  return new Date(nlTimeString);
+}
+
+// Check if we're in the critical booking window (around 19:00)
+function isCriticalBookingWindow() {
+  const nlTime = getCurrentNLTime();
+  const hour = nlTime.getHours();
+  const minute = nlTime.getMinutes();
+  
+  // Critical window: 18:55 to 19:05 (10 minute window)
+  if (hour === 18 && minute >= 55) return true;
+  if (hour === 19 && minute <= 5) return true;
+  
+  return false;
+}
+
+// Check if we should book today based on target date
+function shouldBookToday(targetDate, today) {
   const target = new Date(targetDate + 'T00:00:00Z');
-  const booking = new Date(target);
-  booking.setDate(booking.getDate() - 2);
-  return booking.toISOString().split('T')[0];
+  const todayDate = new Date(today + 'T00:00:00Z');
+  
+  // Calculate days until target
+  const daysUntilTarget = Math.ceil((target - todayDate) / (1000 * 60 * 60 * 24));
+  
+  console.log(`   📊 Days until ${targetDate}: ${daysUntilTarget}`);
+  
+  // Book if target is today (0), tomorrow (1), or day after tomorrow (2)
+  if (daysUntilTarget >= 0 && daysUntilTarget <= 2) {
+    console.log(`   ✅ Target is within booking window - attempting booking today`);
+    return true;
+  }
+  
+  console.log(`   ⏭️ Target is too far away - skipping for now`);
+  return false;
 }
 
 async function main() {
@@ -42,10 +74,10 @@ async function main() {
     
     console.log(`📋 Loaded ${config.bookings.length} booking configurations`);
     
-    // Find bookings scheduled for today
+    // Find bookings that should be attempted today
     const todaysBookings = config.bookings.filter(booking => {
-      const bookingDate = calculateBookingDate(booking.targetDate);
-      return bookingDate === today;
+      console.log(`\n🔍 Checking booking for ${booking.targetDate}:`);
+      return shouldBookToday(booking.targetDate, today);
     });
     
     if (todaysBookings.length === 0) {
@@ -54,6 +86,11 @@ async function main() {
     }
     
     console.log(`🎯 Found ${todaysBookings.length} booking(s) to execute today:`);
+    
+    const isCriticalWindow = isCriticalBookingWindow();
+    const nlTime = getCurrentNLTime();
+    console.log(`🕐 Current Netherlands time: ${nlTime.toLocaleTimeString('en-US', {timeZone: 'Europe/Amsterdam'})}`);
+    console.log(`🎯 Critical booking window: ${isCriticalWindow ? 'YES - will retry every 10s' : 'NO - single attempt'}`);
     
     for (const booking of todaysBookings) {
       console.log(`\n⭐ Executing booking for ${booking.targetDate}`);
@@ -65,14 +102,34 @@ async function main() {
         continue;
       }
       
-      // Multiple attempt strategy for critical bookings
-      const maxAttempts = 3;
+      // During critical window: retry every 10 seconds for 3 minutes (18 attempts)
+      // Outside critical window: try 3 times with 10 second delays
+      const maxAttempts = isCriticalWindow ? 18 : 3;
       const delayBetweenAttempts = 10000; // 10 seconds
+      const maxDuration = isCriticalWindow ? 180000 : null; // 3 minutes for critical window
       let success = false;
+      let attempt = 0;
+      const startTime = Date.now();
       
-      for (let attempt = 1; attempt <= maxAttempts && !success; attempt++) {
+      while (!success && attempt < maxAttempts) {
+        attempt++;
+        const elapsed = Date.now() - startTime;
+        
+        // Stop if we've exceeded max duration in critical window
+        if (maxDuration && elapsed >= maxDuration) {
+          console.log(`   ⏰ Reached maximum duration (${maxDuration/1000}s) - stopping retries`);
+          break;
+        }
+        
+        // Check if we're still in critical window (if we started in it)
+        if (isCriticalWindow && !isCriticalBookingWindow() && attempt > 1) {
+          console.log(`   ⏰ Exited critical booking window - stopping retries`);
+          break;
+        }
+        
         try {
-          console.log(`   🚀 Attempt ${attempt}/${maxAttempts}`);
+          const nlTimeNow = getCurrentNLTime();
+          console.log(`   🚀 Attempt ${attempt} at ${nlTimeNow.toLocaleTimeString('en-US', {timeZone: 'Europe/Amsterdam'})}`);
           
           // Execute the booking
           const command = `node reserve.mjs --date "${booking.targetDate}" --start "${booking.start}" --end "${booking.end}" --resource "${booking.resource}"`;
@@ -98,13 +155,17 @@ async function main() {
         } catch (error) {
           console.log(`   ❌ Attempt ${attempt} failed: ${error.message}`);
           
-          if (attempt < maxAttempts) {
+          if (attempt < maxAttempts && (isCriticalWindow || attempt < 3)) {
             console.log(`   ⏳ Waiting ${delayBetweenAttempts/1000}s before retry...`);
             await new Promise(resolve => setTimeout(resolve, delayBetweenAttempts));
           } else {
-            console.log(`   💥 All ${maxAttempts} attempts failed - keeping booking for next run`);
+            console.log(`   💥 Stopping retries - keeping booking for next run`);
           }
         }
+      }
+      
+      if (!success) {
+        console.log(`   ⚠️ Booking not completed after ${attempt} attempts`);
       }
     }
     
