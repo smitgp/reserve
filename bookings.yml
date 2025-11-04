@@ -7,11 +7,3 @@ bookings:
     start: 09:00
     end: 17:00
     resource: "565"
-  - targetDate: 2025-11-06
-    start: 09:00
-    end: 09:30
-    resource: "565"
-  - targetDate: 2025-11-06
-    start: 12:00
-    end: 12:30
-    resource: "565"
