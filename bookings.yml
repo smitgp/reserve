@@ -1,7 +1,7 @@
 bookings:
-  - targetDate: 2025-11-05
+  - targetDate: 2025-11-07
     start: 09:00
-    end: 09:30
+    end: 17:00
     resource: "564"
   - targetDate: 2025-11-07
     start: 09:00
