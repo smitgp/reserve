@@ -27,13 +27,9 @@ const config = {
   baseEmail: process.env.BASE_EMAIL || "g.smit92@gmail.com"
 };
 
-// Target resources in priority order (563 is first preference)
+// Target resources in priority order (564 is first preference)
 const PREFERRED_RESOURCES = [
-  "563", "564", "145", "154", "188", "149", "205", "157", "184", "182", 
-  "151", "195", "209", "173", "171", "155", "558", "147", "178", "146", 
-  "153", "561", "163", "159", "559", "194", "179", "170", "162", "164", 
-  "156", "152", "197", "212", "176", "161", "180", "186", "160", "166", 
-  "213", "206", "148", "158", "181", "562", "150", "560"
+  "564", "563", "562", "561", "560", "559", "558"
 ];
 
 // Time slot class
