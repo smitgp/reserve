@@ -7,4 +7,7 @@
 #     start: "09:00"
 #     end: "17:00"
 
-"bookings": []
+"bookings":
+  - "targetDate": "2026-02-20"
+    "start": "09:00"
+    "end": "17:00"
