@@ -94,12 +94,47 @@ async function checkAvailability(date, client) {
 
 // Check if a slot is available
 function isSlotAvailable(slot, availability) {
-  const slotStart = new Date(`${slot.date}T${slot.start}:00Z`);
-  const slotEnd = new Date(`${slot.date}T${slot.end}:00Z`);
+  // The library API returns times in a "fake UTC" format.
+  // For example, 09:00 Dutch time is returned as 08:00Z (during winter/CET).
+  // We need to shift our requested local time to match this format for comparison.
+  
+  const getLibraryTimeStr = (dateStr, timeStr) => {
+    // Create a formatter that extracts parts in Amsterdam time
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Europe/Amsterdam',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+      hour12: false
+    });
+
+    // Start with a guess: the input time as UTC
+    const guess = new Date(`${dateStr}T${timeStr}:00Z`);
+    
+    // Format our guess as Amsterdam time
+    const parts = formatter.formatToParts(guess);
+    const p = {};
+    parts.forEach(part => p[part.type] = part.value);
+    
+    // Construct what the time WOULD be in Amsterdam if it was our guess UTC time
+    const amsterdamTimeOfGuess = new Date(`${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}:${p.second}Z`);
+    
+    // The difference between our guess and what it turned out to be in Amsterdam
+    const offset = guess.getTime() - amsterdamTimeOfGuess.getTime();
+    
+    // Apply that offset to our guess to get the true UTC time for that Amsterdam local time
+    return new Date(guess.getTime() + offset).toISOString();
+  };
+
+  const slotStartStr = getLibraryTimeStr(slot.date, slot.start);
+  const slotEndStr = getLibraryTimeStr(slot.date, slot.end);
+  const slotStart = new Date(slotStartStr);
+  const slotEnd = new Date(slotEndStr);
 
   // Check existing reservations
   const hasConflict = availability.reservations.some(reservation => {
-    if (reservation.resource !== slot.resource) return false;
+    // Compare resources as strings to avoid type mismatches
+    if (reservation.resource.toString() !== slot.resource.toString()) return false;
+    
     const resStart = new Date(reservation.start);
     const resEnd = new Date(reservation.end);
     return (slotStart < resEnd && slotEnd > resStart);
@@ -110,8 +145,12 @@ function isSlotAvailable(slot, availability) {
   // Check library closing hours
   if (availability.blocks) {
     const isBlocked = availability.blocks.some(block => {
-      const appliesToResource = !block.resource || block.resource.length === 0 || block.resource.includes(slot.resource);
-      const appliesToType = !block.type || block.type.length === 0 || block.type.includes(parseInt(config.type));
+      // Handle resource ID list (could be empty or contain strings/numbers)
+      const appliesToResource = !block.resource || block.resource.length === 0 || 
+                               block.resource.map(r => r.toString()).includes(slot.resource.toString());
+                               
+      const appliesToType = !block.type || block.type.length === 0 || 
+                           block.type.map(t => t.toString()).includes(config.type.toString());
       
       if (!appliesToResource || !appliesToType) return false;
       
@@ -270,7 +309,7 @@ Example:
   console.log(`🎯 Attempting to reserve ${date} ${start}-${end} on Resource ${resource}`);
 
   // Split into 3-hour chunks
-  const slots = splitIntoChunks(start, end, parseInt(resource), date);
+  const slots = splitIntoChunks(start, end, resource, date);
   console.log(`📋 Split into ${slots.length} chunks:`);
   slots.forEach(slot => console.log(`   • ${slot.toString()}`));
 

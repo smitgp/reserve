@@ -154,6 +154,8 @@ async function main() {
           
         } catch (error) {
           console.log(`   ❌ Attempt ${attempt} failed: ${error.message}`);
+          if (error.stdout) console.log(`   📄 Output: ${error.stdout.trim()}`);
+          if (error.stderr) console.log(`   ⚠️ Error Output: ${error.stderr.trim()}`);
           
           if (attempt < maxAttempts && (isCriticalWindow || attempt < 3)) {
             console.log(`   ⏳ Waiting ${delayBetweenAttempts/1000}s before retry...`);
