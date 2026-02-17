@@ -1,13 +1,4 @@
-# Library Booking Schedule
-# Simple YAML configuration for automatic library bookings
-#
-# Each booking will execute 2 days before the target date at 18:01 Netherlands time
-# The system will automatically select the best available resource (room).
-
 bookings:
-  - targetDate: 2026-02-18
-    start: 09:00
-    end: 09:30
   - targetDate: 2026-02-19
     start: 09:00
     end: 17:00
