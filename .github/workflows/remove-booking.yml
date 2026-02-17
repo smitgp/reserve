@@ -60,6 +60,10 @@ jobs:
           const removeAll = !targetDate || targetDate.trim() === '';
           
           try {
+            // Get today's date in Netherlands timezone for cleanup
+            const today = new Date().toLocaleString("en-US", {timeZone: "Europe/Amsterdam"});
+            const todayDate = new Date(today).toISOString().split('T')[0];
+
             // Load existing configuration
             const yamlContent = await fs.readFile('bookings.yml', 'utf8');
             const config = YAML.parse(yamlContent);
@@ -109,32 +113,31 @@ jobs:
               console.log(`✅ Removed booking for ${targetDate}`);
             }
             
-            // Save updated configuration
-            let finalYamlContent;
-            if (config.bookings.length === 0) {
-              finalYamlContent = '# Library Booking Schedule\n';
-              finalYamlContent += '# Simple YAML configuration for automatic library bookings\n';
-              finalYamlContent += '#\n';
-              finalYamlContent += '# Each booking will execute 2 days before the target date at 18:01 Netherlands time\n';
-              finalYamlContent += '# Add bookings using the "Add New Booking" workflow\n';
-              finalYamlContent += '\n';
-              finalYamlContent += 'bookings: []\n';
-            } else {
-              const yamlData = YAML.stringify(config, {
-                lineWidth: 0,
-                minContentWidth: 0,
-                quotingType: '"'
-              });
-              
-              finalYamlContent = '# Library Booking Schedule\n';
-              finalYamlContent += '# Simple YAML configuration for automatic library bookings\n';
-              finalYamlContent += '#\n';
-              finalYamlContent += '# Each booking will execute 2 days before the target date at 18:01 Netherlands time\n';
-              finalYamlContent += '\n';
-              finalYamlContent += yamlData;
+            // Cleanup past bookings (additional to requested removal)
+            const countAfterRequestedRemoval = config.bookings.length;
+            config.bookings = config.bookings.filter(b => b.targetDate >= todayDate);
+            if (config.bookings.length < countAfterRequestedRemoval) {
+              console.log('🧹 Also removed ' + (countAfterRequestedRemoval - config.bookings.length) + ' past booking(s)');
             }
+
+            // Save updated configuration
+            let headerComment = '# Library Booking Schedule\n';
+            headerComment += '# Simple YAML configuration for automatic library bookings\n';
+            headerComment += '#\n';
+            headerComment += '# Each booking will execute 2 days before the target date at 18:01 Netherlands time\n';
+            headerComment += '# Example booking:\n';
+            headerComment += '#   - targetDate: 2026-02-25\n';
+            headerComment += '#     start: "09:00"\n';
+            headerComment += '#     end: "17:00"\n';
+            headerComment += '\n';
+
+            const yamlData = YAML.stringify(config, {
+              lineWidth: 0,
+              minContentWidth: 0,
+              quotingType: '"'
+            });
             
-            await fs.writeFile('bookings.yml', finalYamlContent);
+            await fs.writeFile('bookings.yml', headerComment + yamlData);
             console.log(`💾 Updated bookings.yml`);
             
             // Show final stats

@@ -170,14 +170,33 @@ async function main() {
       }
     }
     
-    // Save updated configuration (removes completed bookings)
+// Save updated configuration (removes completed bookings and cleans up past ones)
     if (!dryRun) {
-      const updatedYaml = YAML.stringify(config, {
+      const initialCount = config.bookings.length;
+      config.bookings = config.bookings.filter(booking => booking.targetDate >= today);
+      const cleanedCount = initialCount - config.bookings.length;
+      if (cleanedCount > 0) {
+        console.log(`🧹 Removed ${cleanedCount} past booking(s) from schedule`);
+      }
+
+      const yamlData = YAML.stringify(config, {
         lineWidth: 0,
-        minContentWidth: 0
+        minContentWidth: 0,
+        quotingType: '"'
       });
-      await fs.writeFile('bookings.yml', updatedYaml);
-      console.log(`\n💾 Updated bookings.yml`);
+      
+      let headerComment = '# Library Booking Schedule\n';
+      headerComment += '# Simple YAML configuration for automatic library bookings\n';
+      headerComment += '#\n';
+      headerComment += '# Each booking will execute 2 days before the target date at 18:01 Netherlands time\n';
+      headerComment += '# Example booking:\n';
+      headerComment += '#   - targetDate: 2026-02-25\n';
+      headerComment += '#     start: "09:00"\n';
+      headerComment += '#     end: "17:00"\n';
+      headerComment += '\n';
+      
+      await fs.writeFile('bookings.yml', headerComment + yamlData);
+      console.log(`💾 Updated bookings.yml`);
     }
     
   } catch (error) {

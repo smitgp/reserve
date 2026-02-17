@@ -72,6 +72,10 @@ jobs:
           
           console.log('📝 Adding booking: ' + targetDate + ' ' + startTime + '-' + endTime);
           
+          // Get today's date in Netherlands timezone for cleanup
+          const today = new Date().toLocaleString("en-US", {timeZone: "Europe/Amsterdam"});
+          const todayDate = new Date(today).toISOString().split('T')[0];
+
           // Load existing configuration
           let config;
           try {
@@ -86,6 +90,13 @@ jobs:
             config.bookings = [];
           }
           
+          // Cleanup past bookings
+          const initialCountBeforeCleanup = config.bookings.length;
+          config.bookings = config.bookings.filter(b => b.targetDate >= todayDate);
+          if (config.bookings.length < initialCountBeforeCleanup) {
+            console.log('🧹 Removed ' + (initialCountBeforeCleanup - config.bookings.length) + ' past booking(s)');
+          }
+
           // Check for existing booking
           const existingIndex = config.bookings.findIndex(b => b.targetDate === targetDate);
           if (existingIndex !== -1) {
@@ -119,7 +130,10 @@ jobs:
           headerComment += '# Simple YAML configuration for automatic library bookings\n';
           headerComment += '#\n';
           headerComment += '# Each booking will execute 2 days before the target date at 18:01 Netherlands time\n';
-          headerComment += '# Example: ' + targetDate + ' booking will execute on ' + process.env.BOOKING_DATE + ' at 18:01\n';
+          headerComment += '# Example booking:\n';
+          headerComment += '#   - targetDate: 2026-02-25\n';
+          headerComment += '#     start: "09:00"\n';
+          headerComment += '#     end: "17:00"\n';
           headerComment += '\n';
           
           await fs.writeFile('bookings.yml', headerComment + finalYamlContent);
