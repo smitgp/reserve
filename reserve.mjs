@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 // Simple Library Reservation Tool
 //
-// Usage: node reserve.mjs --date 2025-08-07 --start 09:00 --end 18:00 --resource 565
+// Usage: node reserve.mjs --date 2025-08-07 --start 09:00 --end 18:00
 //
 // This script will:
-// 1. Split long time periods into 3-hour chunks
-// 2. Check availability for each chunk
-// 3. Attempt to book all available slots once
+// 1. Fetch all reservations for the given date
+// 2. Look for the best available resource (room) for the requested time
+// 3. Fallback to chunking (max 3 hours) if no single resource is free all day
 // 4. Report success or failure
 
 import axios from "axios";
@@ -26,6 +26,15 @@ const config = {
   type: process.env.TYPE || "36",
   baseEmail: process.env.BASE_EMAIL || "g.smit92@gmail.com"
 };
+
+// Target resources in priority order (563 is first preference)
+const PREFERRED_RESOURCES = [
+  "563", "564", "145", "154", "188", "149", "205", "157", "184", "182", 
+  "151", "195", "209", "173", "171", "155", "558", "147", "178", "146", 
+  "153", "561", "163", "159", "559", "194", "179", "170", "162", "164", 
+  "156", "152", "197", "212", "176", "161", "180", "186", "160", "166", 
+  "213", "206", "148", "158", "181", "562", "150", "560"
+];
 
 // Time slot class
 class TimeSlot {
@@ -279,39 +288,29 @@ async function main() {
       date: { type: "string" },
       start: { type: "string" },
       end: { type: "string" },
-      resource: { type: "string" },
       help: { type: "boolean" }
     }
   });
 
-  if (args.values.help || !args.values.date || !args.values.start || !args.values.end || !args.values.resource) {
+  if (args.values.help || !args.values.date || !args.values.start || !args.values.end) {
     console.log(`
-Simple Library Reservation Tool
+Simple Library Reservation Tool (Auto-Selection Mode)
 
 Usage:
-  node reserve.mjs --date 2025-08-07 --start 09:00 --end 18:00 --resource 565
+  node reserve.mjs --date 2025-08-07 --start 09:00 --end 18:00
 
 Options:
   --date YYYY-MM-DD    Target date
   --start HH:MM        Start time
   --end HH:MM          End time  
-  --resource NUM       Resource ID
   --help               Show this help
-
-Example:
-  node reserve.mjs --date 2025-08-07 --start 09:00 --end 18:00 --resource 565
 `);
     process.exit(args.values.help ? 0 : 1);
   }
 
-  const { date, start, end, resource } = args.values;
+  const { date, start, end } = args.values;
   
-  console.log(`🎯 Attempting to reserve ${date} ${start}-${end} on Resource ${resource}`);
-
-  // Split into 3-hour chunks
-  const slots = splitIntoChunks(start, end, resource, date);
-  console.log(`📋 Split into ${slots.length} chunks:`);
-  slots.forEach(slot => console.log(`   • ${slot.toString()}`));
+  console.log(`🎯 Requesting reservation for ${date} from ${start} to ${end}`);
 
   // Set up HTTP client
   const jar = new CookieJar();
@@ -323,7 +322,7 @@ Example:
   }));
 
   // Check availability
-  console.log(`\n🔍 Checking availability...`);
+  console.log(`\n🔍 Checking availability for ${PREFERRED_RESOURCES.length} resources...`);
   const availability = await checkAvailability(date, client);
   
   if (!availability || !availability.reservations) {
@@ -331,27 +330,56 @@ Example:
     process.exit(1);
   }
 
-  // Filter available slots
-  const availableSlots = [];
+  let availableSlots = [];
   const unavailableSlots = [];
 
-  for (const slot of slots) {
-    const result = isSlotAvailable(slot, availability);
+  // STRATEGY 1: Look for a single resource that is fully available
+  console.log(`🧐 Strategy 1: Looking for a resource available for the ENTIRE duration...`);
+  let bestResource = null;
+  
+  for (const resId of PREFERRED_RESOURCES) {
+    const fullRangeSlot = new TimeSlot(start, end, resId, date);
+    const result = isSlotAvailable(fullRangeSlot, availability);
     if (result.available) {
-      availableSlots.push(slot);
-      console.log(`✅ Available: ${slot.toString()}`);
-    } else {
-      unavailableSlots.push({ slot, reason: result.reason });
-      if (result.reason === "occupied") {
-        console.log(`❌ Occupied: ${slot.toString()}`);
-      } else if (result.reason === "library_closed") {
-        console.log(`🏛️ Library closed: ${slot.toString()}`);
+      bestResource = resId;
+      console.log(`   ✅ Found fully available resource: ${resId}`);
+      break;
+    }
+  }
+
+  if (bestResource) {
+    // Split into 3-hour chunks using the best resource
+    availableSlots = splitIntoChunks(start, end, bestResource, date);
+    console.log(`   📋 Using resource ${bestResource} for all ${availableSlots.length} chunks`);
+  } else {
+    // STRATEGY 2: Fallback to chunk-by-chunk selection
+    console.log(`   ⏭️ No single resource available for full range. Using Strategy 2: Chunk-by-chunk selection...`);
+    
+    // Create base chunks (without resource yet)
+    const baseChunks = splitIntoChunks(start, end, "TEMP", date);
+    
+    for (const chunk of baseChunks) {
+      let chunkFound = false;
+      for (const resId of PREFERRED_RESOURCES) {
+        chunk.resource = resId;
+        const result = isSlotAvailable(chunk, availability);
+        if (result.available) {
+          availableSlots.push(new TimeSlot(chunk.start, chunk.end, resId, date));
+          console.log(`   ✅ Chunk ${chunk.start}-${chunk.end}: Found resource ${resId}`);
+          chunkFound = true;
+          break;
+        }
+      }
+      
+      if (!chunkFound) {
+        console.log(`   ❌ Chunk ${chunk.start}-${chunk.end}: No resources available`);
+        unavailableSlots.push({ slot: chunk, reason: "all_resources_occupied" });
       }
     }
   }
 
   if (availableSlots.length === 0) {
-    console.log("\n❌ No slots available");
+    console.log("\n❌ No slots could be booked on any preferred resources");
     process.exit(1);
   }
 
@@ -417,7 +445,7 @@ Example:
   console.log("\n" + "=".repeat(50));
   console.log("📊 FINAL RESULTS");
   console.log("=".repeat(50));
-  console.log(`✅ Successfully booked: ${successful.length}/${slots.length} slots`);
+  console.log(`✅ Successfully booked: ${successful.length} slots`);
   console.log(`❌ Failed: ${failed.length}`);
   console.log(`⏸️ Unavailable: ${unavailableSlots.length}`);
 
@@ -437,7 +465,7 @@ Example:
   }
 
   // Exit with appropriate code
-  process.exit(successful.length === availableSlots.length ? 0 : 1);
+  process.exit(successful.length > 0 ? 0 : 1);
 }
 
 // Run if called directly

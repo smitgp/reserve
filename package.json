@@ -2,7 +2,6 @@
     "type": "module",
       "scripts": {
     "reserve": "node reserve.mjs",
-    "reserve_guest": "node reserve_guest.mjs",
     "schedule": "node booking-scheduler.mjs"
   },
       "dependencies": {

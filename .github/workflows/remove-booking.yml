@@ -79,7 +79,7 @@ jobs:
               if (config.bookings.length > 0) {
                 console.log(`\n📋 Removing the following bookings:`);
                 config.bookings.forEach((booking, index) => {
-                  console.log(`   ${index + 1}. ${booking.targetDate} ${booking.start}-${booking.end} (Resource ${booking.resource})`);
+                  console.log(`   ${index + 1}. ${booking.targetDate} ${booking.start}-${booking.end}`);
                 });
               }
               
@@ -97,13 +97,13 @@ jobs:
                 console.log(`❌ No booking found for ${targetDate}`);
                 console.log('📋 Available bookings:');
                 config.bookings.forEach((booking, index) => {
-                  console.log(`   ${index + 1}. ${booking.targetDate} ${booking.start}-${booking.end} (Resource ${booking.resource})`);
+                  console.log(`   ${index + 1}. ${booking.targetDate} ${booking.start}-${booking.end}`);
                 });
                 process.exit(1);
               }
               
               const removedBooking = config.bookings[bookingIndex];
-              console.log(`📝 Found booking: ${removedBooking.targetDate} ${removedBooking.start}-${removedBooking.end} (Resource ${removedBooking.resource})`);
+              console.log(`📝 Found booking: ${removedBooking.targetDate} ${removedBooking.start}-${removedBooking.end}`);
               
               config.bookings.splice(bookingIndex, 1);
               console.log(`✅ Removed booking for ${targetDate}`);
@@ -142,7 +142,7 @@ jobs:
             if (config.bookings.length > 0) {
               console.log(`📋 Remaining bookings:`);
               config.bookings.forEach((booking, index) => {
-                console.log(`   ${index + 1}. ${booking.targetDate} ${booking.start}-${booking.end} (Resource ${booking.resource})`);
+                console.log(`   ${index + 1}. ${booking.targetDate} ${booking.start}-${booking.end}`);
               });
             }
             

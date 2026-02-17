@@ -95,7 +95,6 @@ async function main() {
     for (const booking of todaysBookings) {
       console.log(`\n⭐ Executing booking for ${booking.targetDate}`);
       console.log(`   Time: ${booking.start} - ${booking.end}`);
-      console.log(`   Resource: ${booking.resource}`);
       
       if (dryRun) {
         console.log(`   🧪 DRY RUN: Would execute booking now`);
@@ -132,7 +131,7 @@ async function main() {
           console.log(`   🚀 Attempt ${attempt} at ${nlTimeNow.toLocaleTimeString('en-US', {timeZone: 'Europe/Amsterdam'})}`);
           
           // Execute the booking
-          const command = `node reserve.mjs --date "${booking.targetDate}" --start "${booking.start}" --end "${booking.end}" --resource "${booking.resource}"`;
+          const command = `node reserve.mjs --date "${booking.targetDate}" --start "${booking.start}" --end "${booking.end}"`;
           console.log(`   📞 Executing: ${command}`);
           
           const output = execSync(command, { 

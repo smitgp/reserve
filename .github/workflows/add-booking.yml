@@ -7,7 +7,7 @@ on:
         description: 'Target booking date (YYYY-MM-DD)'
         required: true
         type: string
-        default: '2025-12-15'
+        default: '2026-02-20'
       start_time:
         description: 'Start time (HH:MM)'
         required: true
@@ -18,11 +18,6 @@ on:
         required: true
         type: string
         default: '17:00'
-      resource:
-        description: 'Resource ID'
-        required: false
-        type: string
-        default: '565'
 
 permissions:
   contents: write
@@ -50,7 +45,6 @@ jobs:
       run: |
         echo "🎯 Adding booking for: ${{ github.event.inputs.target_date }}"
         echo "⏰ Time: ${{ github.event.inputs.start_time }} - ${{ github.event.inputs.end_time }}"
-        echo "🏢 Resource: ${{ github.event.inputs.resource }}"
         
         # Validate date format
         if ! date -d "${{ github.event.inputs.target_date }}" >/dev/null 2>&1; then
@@ -75,9 +69,8 @@ jobs:
           const targetDate = process.env.TARGET_DATE;
           const startTime = process.env.START_TIME;
           const endTime = process.env.END_TIME;
-          const resource = process.env.RESOURCE;
           
-          console.log('📝 Adding booking: ' + targetDate + ' ' + startTime + '-' + endTime + ' (Resource ' + resource + ')');
+          console.log('📝 Adding booking: ' + targetDate + ' ' + startTime + '-' + endTime);
           
           // Load existing configuration
           let config;
@@ -97,8 +90,8 @@ jobs:
           const existingIndex = config.bookings.findIndex(b => b.targetDate === targetDate);
           if (existingIndex !== -1) {
             console.log('❌ Booking for ' + targetDate + ' already exists:');
-            console.log('   Current: ' + config.bookings[existingIndex].start + '-' + config.bookings[existingIndex].end + ' (Resource ' + config.bookings[existingIndex].resource + ')');
-            console.log('   New: ' + startTime + '-' + endTime + ' (Resource ' + resource + ')');
+            console.log('   Current: ' + config.bookings[existingIndex].start + '-' + config.bookings[existingIndex].end);
+            console.log('   New: ' + startTime + '-' + endTime);
             console.log('🔄 Replacing existing booking');
             config.bookings.splice(existingIndex, 1);
           }
@@ -107,8 +100,7 @@ jobs:
           const newBooking = {
             targetDate: targetDate,
             start: startTime,
-            end: endTime,
-            resource: resource
+            end: endTime
           };
           
           // Add and sort bookings by date
@@ -147,7 +139,6 @@ jobs:
         TARGET_DATE="${{ github.event.inputs.target_date }}" \
         START_TIME="${{ github.event.inputs.start_time }}" \
         END_TIME="${{ github.event.inputs.end_time }}" \
-        RESOURCE="${{ github.event.inputs.resource }}" \
         node add-booking-to-yaml.mjs
         
     - name: Commit changes
@@ -163,7 +154,6 @@ jobs:
 
           🎯 Target: ${{ github.event.inputs.target_date }}
           ⏰ Time: ${{ github.event.inputs.start_time }} - ${{ github.event.inputs.end_time }}
-          🏢 Resource: ${{ github.event.inputs.resource }}
           📅 Will execute: $BOOKING_DATE at 18:01"
           
           git push
