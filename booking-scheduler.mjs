@@ -3,8 +3,11 @@
 // Checks bookings.yml and executes bookings when their time arrives
 
 import fs from 'fs/promises';
-import { execSync } from 'child_process';
+import { exec } from 'child_process';
+import { promisify } from 'util';
 import YAML from 'yaml';
+
+const execAsync = promisify(exec);
 
 // Get today's date in Netherlands timezone
 function getTodayNL() {
@@ -45,7 +48,21 @@ function shouldBookToday(targetDate, today) {
   
   // Book if target is today (0), tomorrow (1), or day after tomorrow (2)
   if (daysUntilTarget >= 0 && daysUntilTarget <= 2) {
-    console.log(`   ✅ Target is within booking window - attempting booking today`);
+    // SPECIAL CASE: T+2 bookings only open at 18:00
+    if (daysUntilTarget === 2) {
+      const nlTime = getCurrentNLTime();
+      const hour = nlTime.getHours();
+      const minute = nlTime.getMinutes();
+      
+      // If before 17:55, it's too early for T+2
+      if (hour < 17 || (hour === 17 && minute < 55)) {
+        console.log(`   ⏭️ Target is 2 days away but it's not yet 18:00 - skipping until evening run`);
+        return false;
+      }
+      console.log(`   🎯 Target is 2 days away and we are in the 18:00 window - proceeding`);
+    } else {
+      console.log(`   ✅ Target is within booking window - attempting booking today`);
+    }
     return true;
   }
   
@@ -92,13 +109,13 @@ async function main() {
     console.log(`🕐 Current Netherlands time: ${nlTime.toLocaleTimeString('en-US', {timeZone: 'Europe/Amsterdam'})}`);
     console.log(`🎯 Critical booking window: ${isCriticalWindow ? 'YES - will retry every 10s' : 'NO - single attempt'}`);
     
-    for (const booking of todaysBookings) {
-      console.log(`\n⭐ Executing booking for ${booking.targetDate}`);
-      console.log(`   Time: ${booking.start} - ${booking.end}`);
+    // Execute all bookings for today in parallel
+    const bookingPromises = todaysBookings.map(async (booking) => {
+      console.log(`\n⭐ Starting booking for ${booking.targetDate} (${booking.start} - ${booking.end})`);
       
       if (dryRun) {
-        console.log(`   🧪 DRY RUN: Would execute booking now`);
-        continue;
+        console.log(`   🧪 DRY RUN: Would execute booking for ${booking.targetDate} now`);
+        return true;
       }
       
       // During critical window: retry every 10 seconds for 3 minutes (18 attempts)
@@ -116,61 +133,62 @@ async function main() {
         
         // Stop if we've exceeded max duration in critical window
         if (maxDuration && elapsed >= maxDuration) {
-          console.log(`   ⏰ Reached maximum duration (${maxDuration/1000}s) - stopping retries`);
+          console.log(`   ⏰ [${booking.targetDate}] Reached maximum duration (${maxDuration/1000}s) - stopping retries`);
           break;
         }
         
         // Check if we're still in critical window (if we started in it)
         if (isCriticalWindow && !isCriticalBookingWindow() && attempt > 1) {
-          console.log(`   ⏰ Exited critical booking window - stopping retries`);
+          console.log(`   ⏰ [${booking.targetDate}] Exited critical booking window - stopping retries`);
           break;
         }
         
         try {
           const nlTimeNow = getCurrentNLTime();
-          console.log(`   🚀 Attempt ${attempt} at ${nlTimeNow.toLocaleTimeString('en-US', {timeZone: 'Europe/Amsterdam'})}`);
+          console.log(`   🚀 [${booking.targetDate}] Attempt ${attempt} at ${nlTimeNow.toLocaleTimeString('en-US', {timeZone: 'Europe/Amsterdam'})}`);
           
           // Execute the booking
           const command = `node reserve.mjs --date "${booking.targetDate}" --start "${booking.start}" --end "${booking.end}"`;
-          console.log(`   📞 Executing: ${command}`);
+          console.log(`   📞 [${booking.targetDate}] Executing: ${command}`);
           
-          const output = execSync(command, { 
-            encoding: 'utf8',
-            stdio: 'pipe'
-          });
+          const { stdout } = await execAsync(command);
           
-          console.log(`   ✅ Booking completed successfully on attempt ${attempt}`);
-          console.log(`   📄 Output: ${output.trim()}`);
+          console.log(`   ✅ [${booking.targetDate}] Booking completed successfully on attempt ${attempt}`);
+          console.log(`   📄 [${booking.targetDate}] Output: ${stdout.trim()}`);
           
-          // Remove completed booking from YAML
+          // Remove completed booking from memory config
           const index = config.bookings.indexOf(booking);
           if (index > -1) {
             config.bookings.splice(index, 1);
-            console.log(`   🗑️ Removed completed booking from schedule`);
+            console.log(`   🗑️ [${booking.targetDate}] Removed completed booking from memory schedule`);
           }
           
           success = true;
           
         } catch (error) {
-          console.log(`   ❌ Attempt ${attempt} failed: ${error.message}`);
-          if (error.stdout) console.log(`   📄 Output: ${error.stdout.trim()}`);
-          if (error.stderr) console.log(`   ⚠️ Error Output: ${error.stderr.trim()}`);
+          console.log(`   ❌ [${booking.targetDate}] Attempt ${attempt} failed: ${error.message}`);
+          if (error.stdout) console.log(`   📄 [${booking.targetDate}] Output: ${error.stdout.trim()}`);
+          if (error.stderr) console.log(`   ⚠️ [${booking.targetDate}] Error Output: ${error.stderr.trim()}`);
           
           if (attempt < maxAttempts && (isCriticalWindow || attempt < 3)) {
-            console.log(`   ⏳ Waiting ${delayBetweenAttempts/1000}s before retry...`);
+            console.log(`   ⏳ [${booking.targetDate}] Waiting ${delayBetweenAttempts/1000}s before retry...`);
             await new Promise(resolve => setTimeout(resolve, delayBetweenAttempts));
           } else {
-            console.log(`   💥 Stopping retries - keeping booking for next run`);
+            console.log(`   💥 [${booking.targetDate}] Stopping retries - keeping booking for next run`);
           }
         }
       }
       
       if (!success) {
-        console.log(`   ⚠️ Booking not completed after ${attempt} attempts`);
+        console.log(`   ⚠️ [${booking.targetDate}] Booking not completed after ${attempt} attempts`);
       }
-    }
+      return success;
+    });
+
+    // Wait for all bookings to finish
+    await Promise.all(bookingPromises);
     
-// Save updated configuration (removes completed bookings and cleans up past ones)
+    // Save updated configuration (removes completed bookings and cleans up past ones)
     if (!dryRun) {
       const initialCount = config.bookings.length;
       config.bookings = config.bookings.filter(booking => booking.targetDate >= today);

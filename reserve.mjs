@@ -27,6 +27,17 @@ const config = {
   baseEmail: process.env.BASE_EMAIL || "g.smit92@gmail.com"
 };
 
+// Create a fresh HTTP client with its own cookie jar
+function createClient() {
+  const jar = new CookieJar();
+  return wrapper(axios.create({
+    jar,
+    withCredentials: true,
+    timeout: 20000,
+    headers: { "User-Agent": "library-reserve/1.0" }
+  }));
+}
+
 // Target resources in priority order (564 is first preference)
 const PREFERRED_RESOURCES = [
   "564", "563", "562", "561", "560", "559", "558"
@@ -238,7 +249,12 @@ async function createGuestAccount(client) {
 
     return { success: true, email: uniqueEmail };
   } catch (error) {
-    return { success: false, error: error.message };
+    let errorMsg = error.message;
+    if (error.response) {
+      const respData = typeof error.response.data === "string" ? error.response.data : JSON.stringify(error.response.data);
+      errorMsg = `${error.message} - Response: ${respData.slice(0, 200)}`;
+    }
+    return { success: false, error: errorMsg };
   }
 }
 
@@ -273,7 +289,12 @@ async function bookSlotWithAccount(slot, client, accountEmail) {
     }
 
   } catch (error) {
-    return { success: false, error: error.message };
+    let errorMsg = error.message;
+    if (error.response) {
+      const respData = typeof error.response.data === "string" ? error.response.data : JSON.stringify(error.response.data);
+      errorMsg = `${error.message} - Response: ${respData.slice(0, 200)}`;
+    }
+    return { success: false, error: errorMsg };
   }
 }
 
@@ -308,14 +329,8 @@ Options:
   
   console.log(`🎯 Requesting reservation for ${date} from ${start} to ${end}`);
 
-  // Set up HTTP client
-  const jar = new CookieJar();
-  const client = wrapper(axios.create({
-    jar,
-    withCredentials: true,
-    timeout: 20000,
-    headers: { "User-Agent": "library-reserve/1.0" }
-  }));
+  // Set up HTTP client for checking availability
+  const client = createClient();
 
   // Check availability
   console.log(`\n🔍 Checking availability for ${PREFERRED_RESOURCES.length} resources...`);
@@ -379,9 +394,8 @@ Options:
     process.exit(1);
   }
 
-  // Attempt to book available slots (max 2 per guest account)
+  // Attempt to book available slots (max 2 per guest account) in parallel batches
   console.log(`\n📅 Attempting to book ${availableSlots.length} available slots...`);
-  const results = [];
   const RESERVATIONS_PER_ACCOUNT = 2;
 
   // Group slots into batches of 2 (max per guest account)
@@ -390,49 +404,46 @@ Options:
     slotBatches.push(availableSlots.slice(i, i + RESERVATIONS_PER_ACCOUNT));
   }
 
-  console.log(`👥 Need ${slotBatches.length} guest account(s) for ${availableSlots.length} slots`);
+  console.log(`👥 Need ${slotBatches.length} guest account(s) for ${availableSlots.length} slots (executing in parallel)`);
 
-  for (let batchIndex = 0; batchIndex < slotBatches.length; batchIndex++) {
-    const batch = slotBatches[batchIndex];
-    console.log(`\n🆔 Guest account ${batchIndex + 1}/${slotBatches.length} (${batch.length} reservations):`);
+  const batchResultsArray = await Promise.all(slotBatches.map(async (batch, index) => {
+    // Stagger batch starts to avoid overwhelming the server (1s gap)
+    await new Promise(resolve => setTimeout(resolve, index * 1000));
     
-    // Create guest account for this batch
-    console.log(`⏳ Creating guest account...`);
-    const accountResult = await createGuestAccount(client);
+    // Each batch gets its own fresh client and cookie jar
+    const batchClient = createClient();
+    const batchResults = [];
+    
+    console.log(`\n🆔 Batch ${index + 1}/${slotBatches.length} (${batch.length} slot(s)):`);
+    console.log(`⏳ [Batch ${index + 1}] Creating guest account...`);
+    const accountResult = await createGuestAccount(batchClient);
     
     if (!accountResult.success) {
-      console.log(`❌ Failed to create guest account: ${accountResult.error}`);
-      // Mark all slots in this batch as failed
-      for (const slot of batch) {
-        results.push({ slot, success: false, error: `Account creation failed: ${accountResult.error}` });
-      }
-      continue;
+      console.log(`❌ [Batch ${index + 1}] Account creation failed: ${accountResult.error}`);
+      return batch.map(slot => ({ slot, success: false, error: `Account creation failed: ${accountResult.error}` }));
     }
     
-    console.log(`✅ Created account: ${accountResult.email}`);
+    console.log(`✅ [Batch ${index + 1}] Created account: ${accountResult.email}`);
     
-    // Book slots with this account
+    // Book slots with this account sequentially within the batch
     for (const slot of batch) {
-      console.log(`⏳ Booking: ${slot.toString()}`);
-      const result = await bookSlotWithAccount(slot, client, accountResult.email);
-      results.push({ slot, ...result });
+      console.log(`⏳ [Batch ${index + 1}] Booking: ${slot.toString()}`);
+      const result = await bookSlotWithAccount(slot, batchClient, accountResult.email);
+      batchResults.push({ slot, ...result });
       
       if (result.success) {
-        console.log(`✅ Success: ${slot.toString()}`);
+        console.log(`✅ [Batch ${index + 1}] Success: ${slot.toString()}`);
       } else {
-        console.log(`❌ Failed: ${slot.toString()} - ${result.error}`);
+        console.log(`❌ [Batch ${index + 1}] Failed: ${slot.toString()} - ${result.error}`);
       }
       
-      // Small delay between bookings on same account
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Keep a small delay between bookings on same account (library convention)
+      await new Promise(resolve => setTimeout(resolve, 500));
     }
-    
-    // Longer delay between different guest accounts
-    if (batchIndex < slotBatches.length - 1) {
-      console.log(`⏳ Preparing next guest account...`);
-      await new Promise(resolve => setTimeout(resolve, 2000));
-    }
-  }
+    return batchResults;
+  }));
+
+  const results = batchResultsArray.flat();
 
   // Final summary
   const successful = results.filter(r => r.success);
