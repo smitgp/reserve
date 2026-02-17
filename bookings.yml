@@ -3,11 +3,11 @@
 #
 # Each booking will execute 2 days before the target date at 18:01 Netherlands time
 # Example booking:
-#   - targetDate: 2026-02-25
+#   - targetDate: "2026-02-25"
 #     start: "09:00"
 #     end: "17:00"
 
 bookings:
-  - targetDate: 2026-02-18
-    start: 17:00
-    end: 17:30
+  - targetDate: "2026-02-18"
+    start: "17:00"
+    end: "17:30"

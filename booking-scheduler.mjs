@@ -200,7 +200,7 @@ async function main() {
       const yamlData = YAML.stringify(config, {
         lineWidth: 0,
         minContentWidth: 0,
-        quotingType: '"'
+        defaultStringType: 'QUOTE_DOUBLE'
       });
       
       let headerComment = '# Library Booking Schedule\n';
@@ -208,7 +208,7 @@ async function main() {
       headerComment += '#\n';
       headerComment += '# Each booking will execute 2 days before the target date at 18:01 Netherlands time\n';
       headerComment += '# Example booking:\n';
-      headerComment += '#   - targetDate: 2026-02-25\n';
+      headerComment += '#   - targetDate: "2026-02-25"\n';
       headerComment += '#     start: "09:00"\n';
       headerComment += '#     end: "17:00"\n';
       headerComment += '\n';

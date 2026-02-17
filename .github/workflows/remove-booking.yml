@@ -134,7 +134,7 @@ jobs:
             const yamlData = YAML.stringify(config, {
               lineWidth: 0,
               minContentWidth: 0,
-              quotingType: '"'
+              defaultStringType: 'QUOTE_DOUBLE'
             });
             
             await fs.writeFile('bookings.yml', headerComment + yamlData);
