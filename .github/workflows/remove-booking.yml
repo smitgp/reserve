@@ -110,15 +110,15 @@ jobs:
             }
             
             // Save updated configuration
-            let yamlContent;
+            let finalYamlContent;
             if (config.bookings.length === 0) {
-              yamlContent = '# Library Booking Schedule\n';
-              yamlContent += '# Simple YAML configuration for automatic library bookings\n';
-              yamlContent += '#\n';
-              yamlContent += '# Each booking will execute 2 days before the target date at 18:01 Netherlands time\n';
-              yamlContent += '# Add bookings using the "Add New Booking" workflow\n';
-              yamlContent += '\n';
-              yamlContent += 'bookings: []\n';
+              finalYamlContent = '# Library Booking Schedule\n';
+              finalYamlContent += '# Simple YAML configuration for automatic library bookings\n';
+              finalYamlContent += '#\n';
+              finalYamlContent += '# Each booking will execute 2 days before the target date at 18:01 Netherlands time\n';
+              finalYamlContent += '# Add bookings using the "Add New Booking" workflow\n';
+              finalYamlContent += '\n';
+              finalYamlContent += 'bookings: []\n';
             } else {
               const yamlData = YAML.stringify(config, {
                 lineWidth: 0,
@@ -126,15 +126,15 @@ jobs:
                 quotingType: '"'
               });
               
-              yamlContent = '# Library Booking Schedule\n';
-              yamlContent += '# Simple YAML configuration for automatic library bookings\n';
-              yamlContent += '#\n';
-              yamlContent += '# Each booking will execute 2 days before the target date at 18:01 Netherlands time\n';
-              yamlContent += '\n';
-              yamlContent += yamlData;
+              finalYamlContent = '# Library Booking Schedule\n';
+              finalYamlContent += '# Simple YAML configuration for automatic library bookings\n';
+              finalYamlContent += '#\n';
+              finalYamlContent += '# Each booking will execute 2 days before the target date at 18:01 Netherlands time\n';
+              finalYamlContent += '\n';
+              finalYamlContent += yamlData;
             }
             
-            await fs.writeFile('bookings.yml', yamlContent);
+            await fs.writeFile('bookings.yml', finalYamlContent);
             console.log(`💾 Updated bookings.yml`);
             
             // Show final stats

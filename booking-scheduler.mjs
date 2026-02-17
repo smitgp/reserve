@@ -20,15 +20,15 @@ function getCurrentNLTime() {
   return new Date(nlTimeString);
 }
 
-// Check if we're in the critical booking window (around 19:00)
+// Check if we're in the critical booking window (around 18:00)
 function isCriticalBookingWindow() {
   const nlTime = getCurrentNLTime();
   const hour = nlTime.getHours();
   const minute = nlTime.getMinutes();
   
-  // Critical window: 18:55 to 19:05 (10 minute window)
-  if (hour === 18 && minute >= 55) return true;
-  if (hour === 19 && minute <= 5) return true;
+  // Critical window: 17:55 to 18:05 (10 minute window)
+  if (hour === 17 && minute >= 55) return true;
+  if (hour === 18 && minute <= 5) return true;
   
   return false;
 }

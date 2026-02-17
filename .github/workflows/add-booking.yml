@@ -116,7 +116,7 @@ jobs:
           config.bookings.sort((a, b) => a.targetDate.localeCompare(b.targetDate));
           
           // Save configuration with nice formatting
-          const yamlContent = YAML.stringify(config, {
+          const finalYamlContent = YAML.stringify(config, {
             lineWidth: 0,
             minContentWidth: 0,
             quotingType: '"'
@@ -130,7 +130,7 @@ jobs:
           headerComment += '# Example: ' + targetDate + ' booking will execute on ' + process.env.BOOKING_DATE + ' at 18:01\n';
           headerComment += '\n';
           
-          await fs.writeFile('bookings.yml', headerComment + yamlContent);
+          await fs.writeFile('bookings.yml', headerComment + finalYamlContent);
           
           console.log('✅ Successfully added booking for ' + targetDate);
           console.log('📋 Booking will execute on ' + process.env.BOOKING_DATE + ' at 18:01 Netherlands time');

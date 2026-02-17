@@ -5,18 +5,6 @@
 # Example: 2026-02-20 booking will execute on 2026-02-18 at 18:01
 
 bookings:
-  - targetDate: 2025-02-19
-    start: 09:00
-    end: 17:00
-    resource: "565"
-  - targetDate: 2025-11-07
-    start: 09:00
-    end: 17:00
-    resource: "564"
-  - targetDate: 2026-01-09
-    start: 09:00
-    end: 17:00
-    resource: "565"
   - targetDate: 2026-02-19
     start: 09:00
     end: 17:00
