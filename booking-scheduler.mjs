@@ -9,6 +9,11 @@ import YAML from 'yaml';
 
 const execAsync = promisify(exec);
 
+// Hour and minute (Amsterdam time) when T+2 booking slots become available.
+// Passed in from the workflow via env so it can be changed in one place.
+const BOOKING_WINDOW_HOUR   = parseInt(process.env.BOOKING_WINDOW_HOUR   || '18', 10);
+const BOOKING_WINDOW_MINUTE = parseInt(process.env.BOOKING_WINDOW_MINUTE || '0',  10);
+
 // Get today's date in Netherlands timezone
 function getTodayNL() {
   const today = new Date();
@@ -23,17 +28,13 @@ function getCurrentNLTime() {
   return new Date(nlTimeString);
 }
 
-// Check if we're in the critical booking window (around 18:00)
+// Check if we're in the critical booking window (within 5 min before / 15 min after opening)
 function isCriticalBookingWindow() {
   const nlTime = getCurrentNLTime();
-  const hour = nlTime.getHours();
-  const minute = nlTime.getMinutes();
-  
-  // Critical window: 17:55 to 18:05 (10 minute window)
-  if (hour === 17 && minute >= 55) return true;
-  if (hour === 18 && minute <= 5) return true;
-  
-  return false;
+  const totalMinutes = nlTime.getHours() * 60 + nlTime.getMinutes();
+  const windowMinutes = BOOKING_WINDOW_HOUR * 60 + BOOKING_WINDOW_MINUTE;
+
+  return totalMinutes >= windowMinutes - 5 && totalMinutes <= windowMinutes + 15;
 }
 
 // Check if we should book today based on target date
@@ -48,18 +49,18 @@ function shouldBookToday(targetDate, today) {
   
   // Book if target is today (0), tomorrow (1), or day after tomorrow (2)
   if (daysUntilTarget >= 0 && daysUntilTarget <= 2) {
-    // SPECIAL CASE: T+2 bookings only open at 18:00
+    // SPECIAL CASE: T+2 bookings only open at the configured window hour
     if (daysUntilTarget === 2) {
       const nlTime = getCurrentNLTime();
-      const hour = nlTime.getHours();
-      const minute = nlTime.getMinutes();
-      
-      // If before 17:55, it's too early for T+2
-      if (hour < 17 || (hour === 17 && minute < 55)) {
-        console.log(`   ⏭️ Target is 2 days away but it's not yet 18:00 - skipping until evening run`);
+      const totalMinutes = nlTime.getHours() * 60 + nlTime.getMinutes();
+      const windowMinutes = BOOKING_WINDOW_HOUR * 60 + BOOKING_WINDOW_MINUTE;
+
+      // Allow from 5 minutes before the window (we may have woken up fractionally early)
+      if (totalMinutes < windowMinutes - 5) {
+        console.log(`   ⏭️ Target is 2 days away but it's not yet ${BOOKING_WINDOW_HOUR}:${String(BOOKING_WINDOW_MINUTE).padStart(2,'0')} - skipping`);
         return false;
       }
-      console.log(`   🎯 Target is 2 days away and we are in the 18:00 window - proceeding`);
+      console.log(`   🎯 Target is 2 days away and we are in the ${BOOKING_WINDOW_HOUR}:${String(BOOKING_WINDOW_MINUTE).padStart(2,'0')} window - proceeding`);
     } else {
       console.log(`   ✅ Target is within booking window - attempting booking today`);
     }
@@ -105,8 +106,7 @@ async function main() {
     console.log(`🎯 Found ${todaysBookings.length} booking(s) to execute today:`);
     
     const isCriticalWindow = isCriticalBookingWindow();
-    const nlTime = getCurrentNLTime();
-    console.log(`🕐 Current Netherlands time: ${nlTime.toLocaleTimeString('en-US', {timeZone: 'Europe/Amsterdam'})}`);
+    console.log(`🕐 Current Netherlands time: ${new Date().toLocaleTimeString('en-US', {timeZone: 'Europe/Amsterdam'})}`);
     console.log(`🎯 Critical booking window: ${isCriticalWindow ? 'YES - will retry every 10s' : 'NO - single attempt'}`);
     
     // Execute all bookings for today in parallel
@@ -206,7 +206,7 @@ async function main() {
       let headerComment = '# Library Booking Schedule\n';
       headerComment += '# Simple YAML configuration for automatic library bookings\n';
       headerComment += '#\n';
-      headerComment += '# Each booking will execute 2 days before the target date at 18:01 Netherlands time\n';
+      headerComment += `# Each booking will execute 2 days before the target date at ${BOOKING_WINDOW_HOUR}:${String(BOOKING_WINDOW_MINUTE).padStart(2,'0')} Netherlands time\n`;
       headerComment += '# Example booking:\n';
       headerComment += '#   - targetDate: "2026-02-25"\n';
       headerComment += '#     start: "09:00"\n';

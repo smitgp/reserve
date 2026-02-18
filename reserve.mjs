@@ -147,10 +147,20 @@ function isSlotAvailable(slot, availability) {
   const slotEnd = new Date(slotEndStr);
 
   // Check existing reservations
-  const hasConflict = availability.reservations.some(reservation => {
-    // Compare resources as strings to avoid type mismatches
-    if (reservation.resource.toString() !== slot.resource.toString()) return false;
-    
+  const resourceReservations = availability.reservations.filter(
+    r => r.resource != null && r.resource.toString() === slot.resource.toString()
+  );
+
+  if (resourceReservations.length > 0) {
+    console.log(`   🔎 [Debug] Resource ${slot.resource} has ${resourceReservations.length} existing reservation(s) on ${slot.date}:`);
+    resourceReservations.forEach(r => {
+      const localStart = new Date(r.start).toLocaleString('en-GB', {timeZone: 'Europe/Amsterdam', hour: '2-digit', minute: '2-digit'});
+      const localEnd   = new Date(r.end).toLocaleString('en-GB', {timeZone: 'Europe/Amsterdam', hour: '2-digit', minute: '2-digit'});
+      console.log(`      • ${r.start} → ${r.end} (NL: ${localStart}–${localEnd})`);
+    });
+  }
+
+  const hasConflict = resourceReservations.some(reservation => {
     const resStart = new Date(reservation.start);
     const resEnd = new Date(reservation.end);
     return (slotStart < resEnd && slotEnd > resStart);
@@ -298,6 +308,115 @@ async function bookSlotWithAccount(slot, client, accountEmail) {
   }
 }
 
+// Detect a "resource was just reserved by someone else" API response
+function isJustReservedError(errorMsg) {
+  return typeof errorMsg === "string" && errorMsg.includes("net gereserveerd");
+}
+
+// Book a set of slots (strategy 1/2 + batch booking) using a given resource list
+async function attemptBookingWithResources(date, start, end, availability, preferredResources) {
+  let availableSlots = [];
+  const unavailableSlots = [];
+
+  // STRATEGY 1: Look for a single resource that is fully available
+  console.log(`🧐 Strategy 1: Looking for a resource available for the ENTIRE duration...`);
+  let bestResource = null;
+
+  for (const resId of preferredResources) {
+    const fullRangeSlot = new TimeSlot(start, end, resId, date);
+    const result = isSlotAvailable(fullRangeSlot, availability);
+    if (result.available) {
+      bestResource = resId;
+      console.log(`   ✅ Found fully available resource: ${resId}`);
+      break;
+    }
+  }
+
+  if (bestResource) {
+    availableSlots = splitIntoChunks(start, end, bestResource, date);
+    console.log(`   📋 Using resource ${bestResource} for all ${availableSlots.length} chunks`);
+  } else {
+    // STRATEGY 2: Fallback to chunk-by-chunk selection
+    console.log(`   ⏭️ No single resource available for full range. Using Strategy 2: Chunk-by-chunk selection...`);
+
+    const baseChunks = splitIntoChunks(start, end, "TEMP", date);
+
+    for (const chunk of baseChunks) {
+      let chunkFound = false;
+      for (const resId of preferredResources) {
+        chunk.resource = resId;
+        const result = isSlotAvailable(chunk, availability);
+        if (result.available) {
+          availableSlots.push(new TimeSlot(chunk.start, chunk.end, resId, date));
+          console.log(`   ✅ Chunk ${chunk.start}-${chunk.end}: Found resource ${resId}`);
+          chunkFound = true;
+          break;
+        }
+      }
+
+      if (!chunkFound) {
+        console.log(`   ❌ Chunk ${chunk.start}-${chunk.end}: No resources available`);
+        unavailableSlots.push({ slot: chunk, reason: "all_resources_occupied" });
+      }
+    }
+  }
+
+  if (availableSlots.length === 0) {
+    return { successful: [], failed: [], unavailableSlots };
+  }
+
+  // Batch booking
+  console.log(`\n📅 Attempting to book ${availableSlots.length} available slots...`);
+  const RESERVATIONS_PER_ACCOUNT = 2;
+
+  const slotBatches = [];
+  for (let i = 0; i < availableSlots.length; i += RESERVATIONS_PER_ACCOUNT) {
+    slotBatches.push(availableSlots.slice(i, i + RESERVATIONS_PER_ACCOUNT));
+  }
+
+  console.log(`👥 Need ${slotBatches.length} guest account(s) for ${availableSlots.length} slots (executing in parallel)`);
+
+  const batchResultsArray = await Promise.all(slotBatches.map(async (batch, index) => {
+    await new Promise(resolve => setTimeout(resolve, index * 1000));
+
+    const batchClient = createClient();
+    const batchResults = [];
+
+    console.log(`\n🆔 Batch ${index + 1}/${slotBatches.length} (${batch.length} slot(s)):`);
+    console.log(`⏳ [Batch ${index + 1}] Creating guest account...`);
+    const accountResult = await createGuestAccount(batchClient);
+
+    if (!accountResult.success) {
+      console.log(`❌ [Batch ${index + 1}] Account creation failed: ${accountResult.error}`);
+      return batch.map(slot => ({ slot, success: false, error: `Account creation failed: ${accountResult.error}` }));
+    }
+
+    console.log(`✅ [Batch ${index + 1}] Created account: ${accountResult.email}`);
+
+    for (const slot of batch) {
+      console.log(`⏳ [Batch ${index + 1}] Booking: ${slot.toString()}`);
+      const result = await bookSlotWithAccount(slot, batchClient, accountResult.email);
+      batchResults.push({ slot, ...result });
+
+      if (result.success) {
+        console.log(`✅ [Batch ${index + 1}] Success: ${slot.toString()}`);
+      } else {
+        console.log(`❌ [Batch ${index + 1}] Failed: ${slot.toString()} - ${result.error}`);
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    return batchResults;
+  }));
+
+  const results = batchResultsArray.flat();
+  return {
+    successful: results.filter(r => r.success),
+    failed: results.filter(r => !r.success),
+    unavailableSlots
+  };
+}
+
 // Main function
 async function main() {
   const args = parseArgs({
@@ -326,153 +445,98 @@ Options:
   }
 
   const { date, start, end } = args.values;
-  
+
   console.log(`🎯 Requesting reservation for ${date} from ${start} to ${end}`);
 
-  // Set up HTTP client for checking availability
   const client = createClient();
 
-  // Check availability
-  console.log(`\n🔍 Checking availability for ${PREFERRED_RESOURCES.length} resources...`);
-  const availability = await checkAvailability(date, client);
-  
-  if (!availability || !availability.reservations) {
-    console.log("❌ Could not check availability");
-    process.exit(1);
-  }
+  // Track resources that the booking API confirmed are taken (even if availability API shows them free)
+  const knownTakenResources = new Set();
+  const allSuccessful = [];
+  const allFailed = [];
+  const allUnavailable = [];
+  const MAX_RESOURCE_RETRIES = PREFERRED_RESOURCES.length;
 
-  let availableSlots = [];
-  const unavailableSlots = [];
+  for (let attempt = 1; attempt <= MAX_RESOURCE_RETRIES; attempt++) {
+    const remainingResources = PREFERRED_RESOURCES.filter(r => !knownTakenResources.has(r));
 
-  // STRATEGY 1: Look for a single resource that is fully available
-  console.log(`🧐 Strategy 1: Looking for a resource available for the ENTIRE duration...`);
-  let bestResource = null;
-  
-  for (const resId of PREFERRED_RESOURCES) {
-    const fullRangeSlot = new TimeSlot(start, end, resId, date);
-    const result = isSlotAvailable(fullRangeSlot, availability);
-    if (result.available) {
-      bestResource = resId;
-      console.log(`   ✅ Found fully available resource: ${resId}`);
+    if (remainingResources.length === 0) {
+      console.log("\n❌ All preferred resources have been confirmed taken. No alternatives left.");
+      break;
+    }
+
+    if (attempt > 1) {
+      const excluded = [...knownTakenResources].join(", ");
+      console.log(`\n🔄 Retrying with alternative resources (excluded: ${excluded})...`);
+      // Small delay before re-checking to give the API a moment to reflect reality
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+
+    console.log(`\n🔍 Checking availability for ${remainingResources.length} resource(s)...`);
+    const availability = await checkAvailability(date, client);
+
+    if (!availability || !availability.reservations) {
+      console.log("❌ Could not check availability");
+      console.log(`   🔎 [Debug] Raw response type: ${typeof availability}, keys: ${availability ? Object.keys(availability).join(', ') : 'n/a'}`);
+      process.exit(1);
+    }
+
+    console.log(`   🔎 [Debug] API returned ${availability.reservations.length} total reservation(s) for ${date}`);
+
+    const { successful, failed, unavailableSlots } = await attemptBookingWithResources(
+      date, start, end, availability, remainingResources
+    );
+
+    allSuccessful.push(...successful);
+    allUnavailable.push(...unavailableSlots);
+
+    if (successful.length > 0) {
+      // At least some slots were booked — collect any remaining failures and stop
+      allFailed.push(...failed);
+      break;
+    }
+
+    // Classify failures: "just reserved by someone else" vs other errors
+    const justReservedFailed = failed.filter(r => isJustReservedError(r.error));
+    const otherFailed = failed.filter(r => !isJustReservedError(r.error));
+
+    if (justReservedFailed.length > 0 && otherFailed.length === 0) {
+      // Every failure was a race-condition "just reserved" — identify the taken resources and retry
+      const takenNow = [...new Set(justReservedFailed.map(r => r.slot.resource))];
+      takenNow.forEach(r => knownTakenResources.add(r));
+      console.log(`\n⚠️  Resource(s) [${takenNow.join(", ")}] were just taken by someone else. Trying next resource...`);
+      // Don't add these to allFailed yet — we'll retry with other resources
+    } else {
+      // Mix of error types or non-recoverable failures
+      allFailed.push(...failed);
       break;
     }
   }
 
-  if (bestResource) {
-    // Split into 3-hour chunks using the best resource
-    availableSlots = splitIntoChunks(start, end, bestResource, date);
-    console.log(`   📋 Using resource ${bestResource} for all ${availableSlots.length} chunks`);
-  } else {
-    // STRATEGY 2: Fallback to chunk-by-chunk selection
-    console.log(`   ⏭️ No single resource available for full range. Using Strategy 2: Chunk-by-chunk selection...`);
-    
-    // Create base chunks (without resource yet)
-    const baseChunks = splitIntoChunks(start, end, "TEMP", date);
-    
-    for (const chunk of baseChunks) {
-      let chunkFound = false;
-      for (const resId of PREFERRED_RESOURCES) {
-        chunk.resource = resId;
-        const result = isSlotAvailable(chunk, availability);
-        if (result.available) {
-          availableSlots.push(new TimeSlot(chunk.start, chunk.end, resId, date));
-          console.log(`   ✅ Chunk ${chunk.start}-${chunk.end}: Found resource ${resId}`);
-          chunkFound = true;
-          break;
-        }
-      }
-      
-      if (!chunkFound) {
-        console.log(`   ❌ Chunk ${chunk.start}-${chunk.end}: No resources available`);
-        unavailableSlots.push({ slot: chunk, reason: "all_resources_occupied" });
-      }
-    }
-  }
-
-  if (availableSlots.length === 0) {
-    console.log("\n❌ No slots could be booked on any preferred resources");
-    process.exit(1);
-  }
-
-  // Attempt to book available slots (max 2 per guest account) in parallel batches
-  console.log(`\n📅 Attempting to book ${availableSlots.length} available slots...`);
-  const RESERVATIONS_PER_ACCOUNT = 2;
-
-  // Group slots into batches of 2 (max per guest account)
-  const slotBatches = [];
-  for (let i = 0; i < availableSlots.length; i += RESERVATIONS_PER_ACCOUNT) {
-    slotBatches.push(availableSlots.slice(i, i + RESERVATIONS_PER_ACCOUNT));
-  }
-
-  console.log(`👥 Need ${slotBatches.length} guest account(s) for ${availableSlots.length} slots (executing in parallel)`);
-
-  const batchResultsArray = await Promise.all(slotBatches.map(async (batch, index) => {
-    // Stagger batch starts to avoid overwhelming the server (1s gap)
-    await new Promise(resolve => setTimeout(resolve, index * 1000));
-    
-    // Each batch gets its own fresh client and cookie jar
-    const batchClient = createClient();
-    const batchResults = [];
-    
-    console.log(`\n🆔 Batch ${index + 1}/${slotBatches.length} (${batch.length} slot(s)):`);
-    console.log(`⏳ [Batch ${index + 1}] Creating guest account...`);
-    const accountResult = await createGuestAccount(batchClient);
-    
-    if (!accountResult.success) {
-      console.log(`❌ [Batch ${index + 1}] Account creation failed: ${accountResult.error}`);
-      return batch.map(slot => ({ slot, success: false, error: `Account creation failed: ${accountResult.error}` }));
-    }
-    
-    console.log(`✅ [Batch ${index + 1}] Created account: ${accountResult.email}`);
-    
-    // Book slots with this account sequentially within the batch
-    for (const slot of batch) {
-      console.log(`⏳ [Batch ${index + 1}] Booking: ${slot.toString()}`);
-      const result = await bookSlotWithAccount(slot, batchClient, accountResult.email);
-      batchResults.push({ slot, ...result });
-      
-      if (result.success) {
-        console.log(`✅ [Batch ${index + 1}] Success: ${slot.toString()}`);
-      } else {
-        console.log(`❌ [Batch ${index + 1}] Failed: ${slot.toString()} - ${result.error}`);
-      }
-      
-      // Keep a small delay between bookings on same account (library convention)
-      await new Promise(resolve => setTimeout(resolve, 500));
-    }
-    return batchResults;
-  }));
-
-  const results = batchResultsArray.flat();
-
   // Final summary
-  const successful = results.filter(r => r.success);
-  const failed = results.filter(r => !r.success);
-
   console.log("\n" + "=".repeat(50));
   console.log("📊 FINAL RESULTS");
   console.log("=".repeat(50));
-  console.log(`✅ Successfully booked: ${successful.length} slots`);
-  console.log(`❌ Failed: ${failed.length}`);
-  console.log(`⏸️ Unavailable: ${unavailableSlots.length}`);
+  console.log(`✅ Successfully booked: ${allSuccessful.length} slots`);
+  console.log(`❌ Failed: ${allFailed.length}`);
+  console.log(`⏸️ Unavailable: ${allUnavailable.length}`);
 
-  if (successful.length > 0) {
+  if (allSuccessful.length > 0) {
     console.log("\n🎉 Successfully booked:");
-    successful.forEach(r => console.log(`   • ${r.slot.toString()} (${r.email})`));
+    allSuccessful.forEach(r => console.log(`   • ${r.slot.toString()} (${r.email})`));
   }
 
-  if (failed.length > 0) {
+  if (allFailed.length > 0) {
     console.log("\n❌ Failed to book:");
-    failed.forEach(r => console.log(`   • ${r.slot.toString()} (${r.error})`));
+    allFailed.forEach(r => console.log(`   • ${r.slot.toString()} (${r.error})`));
   }
 
-  if (unavailableSlots.length > 0) {
+  if (allUnavailable.length > 0) {
     console.log("\n⏸️ Were unavailable:");
-    unavailableSlots.forEach(u => console.log(`   • ${u.slot.toString()} (${u.reason})`));
+    allUnavailable.forEach(u => console.log(`   • ${u.slot.toString()} (${u.reason})`));
   }
 
-  // Exit with appropriate code
-  process.exit(successful.length > 0 ? 0 : 1);
+  process.exit(allSuccessful.length > 0 ? 0 : 1);
 }
 
 // Run if called directly
