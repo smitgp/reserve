@@ -38,9 +38,9 @@ function createClient() {
   }));
 }
 
-// Target resources in priority order (564 is first preference)
+// Target resources in priority order (558 is first preference)
 const PREFERRED_RESOURCES = [
-  "564", "563", "562", "561", "560", "559", "558"
+  "558", "559", "560", "561", "562", "563", "564"
 ];
 
 // Time slot class
